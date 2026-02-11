@@ -17,17 +17,14 @@ git submodule update --init
 
 ## Version Management
 
-Each package has an independent version, following the `MAJOR.MINOR.PATCH-REVISION` format.
+Each package has an independent version, following simple semver (`MAJOR.MINOR.PATCH`).
+Version is managed directly in each submodule's VERSION file.
 
 | Package | VERSION File | Description |
 |---------|-------------|-------------|
 | xvector | `xvector-dev/VERSION` | libxvector-dev .deb package |
 | xcompute | `xvector-dev/VERSION_XCOMPUTE` | libxcompute-dev .deb package |
 | xfaiss | `xfaiss/VERSION` | xfaiss source tarball |
-
-- **Base version** (`MAJOR.MINOR.PATCH`): Changed via the `bump` command
-- **Revision**: Automatically incremented on each `package` run, reset to 1 on `bump`
-- Example: `0.1.0-1` → `0.1.0-2` → (patch bump) → `0.1.1-1`
 
 ## deploy.sh
 
@@ -40,21 +37,10 @@ Each package has an independent version, following the `MAJOR.MINOR.PATCH-REVISI
 
 Example output:
 ```
-xvector    0.1.0-1
-xcompute   0.1.0-1
-xfaiss     0.1.0-1 (faiss-1.13.0)
+xvector    0.1.0
+xcompute   0.1.0
+xfaiss     0.1.0 (upstream=faiss-1.13.0)
 ```
-
-### Version Bump
-
-```bash
-./deploy.sh bump patch xvector    # 0.1.0-1 -> 0.1.1-1
-./deploy.sh bump minor xcompute   # 0.1.0-1 -> 0.2.0-1
-./deploy.sh bump major xfaiss     # 0.1.0-1 -> 1.0.0-1
-./deploy.sh bump patch all        # Patch bump all packages
-```
-
-When bumping xvector, `project(xvector VERSION ...)` in `xvector-dev/CMakeLists.txt` is also updated.
 
 ### Packaging
 
@@ -68,14 +54,14 @@ When bumping xvector, `project(xvector VERSION ...)` in `xvector-dev/CMakeLists.
 When packaging runs:
 1. xvector/xcompute: Builds via `xvector-dev/scripts/build.sh --clean --release`, then generates .deb with cpack
 2. xfaiss: Generates source tarball via `git archive` (`.gitattributes` export-ignore applied)
-3. The revision of the packaged target is automatically incremented by +1
+3. Build is recorded in `packages/manifest.json` (version + git hash)
 
 Generated artifacts:
 ```
 packages/
-  libxvector-dev_0.1.0-1_amd64.deb
-  libxcompute-dev_0.1.0-1_amd64.deb
-  xfaiss-0.1.0-1+faiss1.13.0-source.tar.gz
+  libxvector-dev_0.1.0_amd64.deb
+  libxcompute-dev_0.1.0_amd64.deb
+  xfaiss-0.1.0+faiss1.13.0-source.tar.gz
 ```
 
 ### Git Tag
@@ -85,7 +71,7 @@ packages/
 ./deploy.sh tag xvector           # Tag xvector only
 ```
 
-Tag format: `{target}-v{version}` (e.g., `xvector-v0.1.0-1`, `xfaiss-v0.1.0-1`)
+Tag format: `{target}-v{version}` (e.g., `xvector-v0.1.0`, `xfaiss-v0.1.0`)
 
 Tag creation is rejected if there are uncommitted changes.
 

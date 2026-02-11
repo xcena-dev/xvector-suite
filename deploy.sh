@@ -7,6 +7,10 @@ XVECTOR_DIR="${SUITE_ROOT}/xvector-dev"
 XFAISS_DIR="${SUITE_ROOT}/xfaiss"
 PACKAGES_DIR="${SUITE_ROOT}/packages"
 
+# Deploy branch configuration
+XVECTOR_DEPLOY_BRANCH="main"
+XFAISS_DEPLOY_BRANCH="faiss-1.13.0-xcena"
+
 # VERSION file paths
 XVECTOR_VERSION_FILE="${XVECTOR_DIR}/VERSION"
 XCOMPUTE_VERSION_FILE="${XVECTOR_DIR}/VERSION_XCOMPUTE"
@@ -17,65 +21,130 @@ log_info()  { echo -e "\033[0;32m[INFO]\033[0m  $*"; }
 log_error() { echo -e "\033[0;31m[ERROR]\033[0m $*" >&2; }
 log_warn()  { echo -e "\033[0;33m[WARN]\033[0m  $*"; }
 
+# --- Submodule branch verification ---
+
+# Get current branch name for a git repo
+get_current_branch() {
+    local repo_dir="$1"
+    git -C "${repo_dir}" rev-parse --abbrev-ref HEAD 2>/dev/null
+}
+
+# Verify submodules are on their deploy branches
+verify_deploy_branches() {
+    local failed=0
+
+    local xvector_branch
+    xvector_branch=$(get_current_branch "${XVECTOR_DIR}")
+    if [[ "${xvector_branch}" != "${XVECTOR_DEPLOY_BRANCH}" ]]; then
+        log_error "xvector-dev is on branch '${xvector_branch}', expected '${XVECTOR_DEPLOY_BRANCH}'"
+        failed=1
+    fi
+
+    local xfaiss_branch
+    xfaiss_branch=$(get_current_branch "${XFAISS_DIR}")
+    if [[ "${xfaiss_branch}" != "${XFAISS_DEPLOY_BRANCH}" ]]; then
+        log_error "xfaiss is on branch '${xfaiss_branch}', expected '${XFAISS_DEPLOY_BRANCH}'"
+        failed=1
+    fi
+
+    if [[ ${failed} -ne 0 ]]; then
+        log_error "Submodule branch mismatch. Please checkout the correct deploy branches."
+        log_info "  cd xvector-dev && git checkout ${XVECTOR_DEPLOY_BRANCH}"
+        log_info "  cd xfaiss     && git checkout ${XFAISS_DEPLOY_BRANCH}"
+        exit 1
+    fi
+
+    log_info "Deploy branches verified (xvector-dev=${xvector_branch}, xfaiss=${xfaiss_branch})"
+}
+
+# --- Manifest helpers ---
+
+MANIFEST_FILE="${PACKAGES_DIR}/manifest.json"
+
+# Get short git hash for a repo
+get_git_hash() {
+    local repo_dir="$1"
+    git -C "${repo_dir}" rev-parse --short HEAD
+}
+
+# Check manifest for version+hash conflict
+# If same version exists with a different hash → error (must bump VERSION in submodule)
+check_manifest_conflict() {
+    local target="$1"
+    local version="$2"
+    local git_hash="$3"
+
+    if [[ ! -f "${MANIFEST_FILE}" ]]; then
+        return 0
+    fi
+
+    local existing_hash
+    existing_hash=$(jq -r --arg t "${target}" --arg v "${version}" \
+        '(.[$t] // [])[] | select(.version == $v) | .git_hash' \
+        "${MANIFEST_FILE}")
+
+    if [[ -z "${existing_hash}" ]]; then
+        return 0
+    fi
+
+    if [[ "${existing_hash}" == "${git_hash}" ]]; then
+        return 0
+    fi
+
+    log_error "Version ${version} for ${target} was already built from a different source (${existing_hash})."
+    log_error "Current source is ${git_hash}. Bump the VERSION in the submodule first."
+    exit 1
+}
+
+# Record build entry in manifest.json
+record_manifest() {
+    local target="$1"
+    local version="$2"
+    local git_hash="$3"
+    local artifact="$4"
+
+    if [[ ! -f "${MANIFEST_FILE}" ]]; then
+        echo '{}' > "${MANIFEST_FILE}"
+    fi
+
+    local timestamp
+    timestamp=$(date +%s)
+
+    local new_entry
+    new_entry=$(jq -n --arg v "${version}" --arg h "${git_hash}" \
+        --arg a "${artifact}" --argjson ts "${timestamp}" \
+        '{version:$v, git_hash:$h, artifact:$a, timestamp:$ts}')
+
+    local updated
+    updated=$(jq --arg t "${target}" --arg v "${version}" --argjson entry "${new_entry}" '
+        if .[$t] == null then .[$t] = [] else . end
+        | if ([.[$t][] | select(.version == $v)] | length) > 0
+          then .[$t] = [.[$t][] | if .version == $v then $entry else . end]
+          else .[$t] += [$entry]
+          end
+    ' "${MANIFEST_FILE}")
+
+    echo "${updated}" > "${MANIFEST_FILE}"
+    log_info "Recorded ${target} ${version} (${git_hash}) in manifest"
+}
+
 # --- Version helpers ---
 
-# Read version file → sets _BASE_VERSION, _REVISION
+# Read version from VERSION file (pure semver, e.g. "0.1.4")
 read_version() {
     local file="$1"
     if [[ ! -f "${file}" ]]; then
         log_error "VERSION file not found: ${file}"
         exit 1
     fi
-    local first_line
-    first_line=$(head -1 "${file}")
-    _BASE_VERSION="${first_line%-*}"
-    _REVISION="${first_line##*-}"
+    _VERSION=$(head -1 "${file}" | tr -d '[:space:]')
 }
 
-# Read xfaiss version → sets _BASE_VERSION, _REVISION, _UPSTREAM
+# Read xfaiss version → sets _VERSION, _UPSTREAM
 read_xfaiss_version() {
     read_version "$1"
     _UPSTREAM=$(grep '^upstream=' "$1" 2>/dev/null | cut -d= -f2)
     _UPSTREAM="${_UPSTREAM:-unknown}"
-}
-
-# Write version file
-write_version() {
-    local file="$1"
-    local base="$2"
-    local rev="$3"
-    local upstream="${4:-}"
-    echo "${base}-${rev}" > "${file}"
-    if [[ -n "${upstream}" ]]; then
-        echo "upstream=${upstream}" >> "${file}"
-    fi
-}
-
-# Get full version string (first line of VERSION file)
-get_full_version() {
-    head -1 "$1"
-}
-
-# Parse semver → sets MAJOR, MINOR, PATCH
-parse_semver() {
-    local version="$1"
-    IFS='.' read -r MAJOR MINOR PATCH <<< "${version}"
-    MAJOR=${MAJOR:-0}
-    MINOR=${MINOR:-0}
-    PATCH=${PATCH:-0}
-}
-
-# Bump semver → prints new base version
-bump_semver() {
-    local base="$1"
-    local type="$2"
-    parse_semver "${base}"
-    case "${type}" in
-        major) echo "$((MAJOR + 1)).0.0" ;;
-        minor) echo "${MAJOR}.$((MINOR + 1)).0" ;;
-        patch) echo "${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
-        *) log_error "Invalid bump type: ${type}. Must be major, minor, or patch."; exit 1 ;;
-    esac
 }
 
 # Validate target argument
@@ -87,18 +156,6 @@ validate_target() {
     esac
 }
 
-# Update xvector-dev/CMakeLists.txt project version
-update_cmake_version() {
-    local new_version="$1"
-    local cmake_file="${XVECTOR_DIR}/CMakeLists.txt"
-    if [[ ! -f "${cmake_file}" ]]; then
-        log_error "CMakeLists.txt not found: ${cmake_file}"
-        exit 1
-    fi
-    sed -i "s/\(project(xvector VERSION \)[0-9.]*\(.*\)/\1${new_version}\2/" "${cmake_file}"
-    log_info "Updated CMakeLists.txt: project(xvector VERSION ${new_version})"
-}
-
 # --- show ---
 
 cmd_show() {
@@ -107,70 +164,16 @@ cmd_show() {
 
     if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
         read_version "${XVECTOR_VERSION_FILE}"
-        echo "xvector    ${_BASE_VERSION}-${_REVISION}"
+        echo "xvector    ${_VERSION}"
     fi
     if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
         read_version "${XCOMPUTE_VERSION_FILE}"
-        echo "xcompute   ${_BASE_VERSION}-${_REVISION}"
+        echo "xcompute   ${_VERSION}"
     fi
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         read_xfaiss_version "${XFAISS_VERSION_FILE}"
-        echo "xfaiss     ${_BASE_VERSION}-${_REVISION} (${_UPSTREAM})"
+        echo "xfaiss     ${_VERSION} (upstream=${_UPSTREAM})"
     fi
-}
-
-# --- bump ---
-
-cmd_bump() {
-    local bump_type="${1:-}"
-    local target="${2:-}"
-
-    if [[ -z "${bump_type}" || -z "${target}" ]]; then
-        log_error "Usage: deploy.sh bump <major|minor|patch> <xvector|xcompute|xfaiss|all>"
-        exit 1
-    fi
-
-    validate_target "${target}"
-
-    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
-        bump_target "xvector" "${bump_type}"
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
-        bump_target "xcompute" "${bump_type}"
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
-        bump_target "xfaiss" "${bump_type}"
-    fi
-}
-
-bump_target() {
-    local target="$1"
-    local bump_type="$2"
-
-    case "${target}" in
-        xvector)
-            read_version "${XVECTOR_VERSION_FILE}"
-            local new_base
-            new_base=$(bump_semver "${_BASE_VERSION}" "${bump_type}")
-            write_version "${XVECTOR_VERSION_FILE}" "${new_base}" "1"
-            update_cmake_version "${new_base}"
-            log_info "xvector: ${_BASE_VERSION}-${_REVISION} -> ${new_base}-1"
-            ;;
-        xcompute)
-            read_version "${XCOMPUTE_VERSION_FILE}"
-            local new_base
-            new_base=$(bump_semver "${_BASE_VERSION}" "${bump_type}")
-            write_version "${XCOMPUTE_VERSION_FILE}" "${new_base}" "1"
-            log_info "xcompute: ${_BASE_VERSION}-${_REVISION} -> ${new_base}-1"
-            ;;
-        xfaiss)
-            read_xfaiss_version "${XFAISS_VERSION_FILE}"
-            local new_base
-            new_base=$(bump_semver "${_BASE_VERSION}" "${bump_type}")
-            write_version "${XFAISS_VERSION_FILE}" "${new_base}" "1" "${_UPSTREAM}"
-            log_info "xfaiss: ${_BASE_VERSION}-${_REVISION} -> ${new_base}-1"
-            ;;
-    esac
 }
 
 # --- package ---
@@ -215,9 +218,13 @@ package_build_xvector_dev() {
 
 package_xvector() {
     read_version "${XVECTOR_VERSION_FILE}"
-    local full_version="${_BASE_VERSION}-${_REVISION}"
+    local version="${_VERSION}"
     local build_dir="${XVECTOR_DIR}/build/Release"
-    local deb_name="libxvector-dev_${full_version}_amd64.deb"
+    local deb_name="libxvector-dev_${version}_amd64.deb"
+
+    local git_hash
+    git_hash=$(get_git_hash "${XVECTOR_DIR}")
+    check_manifest_conflict "xvector" "${version}" "${git_hash}"
 
     if [[ ! -d "${build_dir}" ]]; then
         log_error "Build directory not found: ${build_dir}"
@@ -232,7 +239,6 @@ package_xvector() {
         if ! cpack -G DEB \
             -D CPACK_COMPONENTS_ALL=xvector \
             -D CPACK_PACKAGING_INSTALL_PREFIX=/opt/xvector \
-            -D CPACK_DEBIAN_PACKAGE_RELEASE="${_REVISION}" \
             -D CPACK_DEBIAN_XVECTOR_FILE_NAME="${deb_name}"; then
             log_error "Failed to generate libxvector-dev package"
             exit 1
@@ -246,18 +252,18 @@ package_xvector() {
     fi
 
     log_info "Created: ${deb_name}"
-
-    # Increment revision
-    _REVISION=$((_REVISION + 1))
-    write_version "${XVECTOR_VERSION_FILE}" "${_BASE_VERSION}" "${_REVISION}"
-    log_info "xvector revision -> ${_BASE_VERSION}-${_REVISION}"
+    record_manifest "xvector" "${version}" "${git_hash}" "${deb_name}"
 }
 
 package_xcompute() {
     read_version "${XCOMPUTE_VERSION_FILE}"
-    local full_version="${_BASE_VERSION}-${_REVISION}"
+    local version="${_VERSION}"
     local build_dir="${XVECTOR_DIR}/build/Release"
-    local deb_name="libxcompute-dev_${full_version}_amd64.deb"
+    local deb_name="libxcompute-dev_${version}_amd64.deb"
+
+    local git_hash
+    git_hash=$(get_git_hash "${XVECTOR_DIR}")
+    check_manifest_conflict "xcompute" "${version}" "${git_hash}"
 
     if [[ ! -d "${build_dir}" ]]; then
         log_error "Build directory not found: ${build_dir}"
@@ -272,8 +278,7 @@ package_xcompute() {
         if ! cpack -G DEB \
             -D CPACK_COMPONENTS_ALL=xcompute \
             -D CPACK_PACKAGING_INSTALL_PREFIX=/opt/xcompute \
-            -D CPACK_PACKAGE_VERSION="${_BASE_VERSION}" \
-            -D CPACK_DEBIAN_PACKAGE_RELEASE="${_REVISION}" \
+            -D CPACK_PACKAGE_VERSION="${version}" \
             -D CPACK_DEBIAN_XCOMPUTE_FILE_NAME="${deb_name}"; then
             log_error "Failed to generate libxcompute-dev package"
             exit 1
@@ -287,18 +292,18 @@ package_xcompute() {
     fi
 
     log_info "Created: ${deb_name}"
-
-    # Increment revision
-    _REVISION=$((_REVISION + 1))
-    write_version "${XCOMPUTE_VERSION_FILE}" "${_BASE_VERSION}" "${_REVISION}"
-    log_info "xcompute revision -> ${_BASE_VERSION}-${_REVISION}"
+    record_manifest "xcompute" "${version}" "${git_hash}" "${deb_name}"
 }
 
 package_xfaiss() {
     read_xfaiss_version "${XFAISS_VERSION_FILE}"
-    local full_version="${_BASE_VERSION}-${_REVISION}"
+    local version="${_VERSION}"
     local upstream_short="${_UPSTREAM#faiss-}"
-    local tarball_name="xfaiss-${full_version}+faiss${upstream_short}-source.tar.gz"
+    local tarball_name="xfaiss-${version}+faiss${upstream_short}-source.tar.gz"
+
+    local git_hash
+    git_hash=$(get_git_hash "${XFAISS_DIR}")
+    check_manifest_conflict "xfaiss" "${version}" "${git_hash}"
 
     log_info "Creating ${tarball_name}..."
 
@@ -309,7 +314,7 @@ package_xfaiss() {
 
     local temp_dir
     temp_dir=$(mktemp -d)
-    local archive_dir="${temp_dir}/xfaiss-${full_version}"
+    local archive_dir="${temp_dir}/xfaiss-${version}"
 
     # Extract source via git archive (respects .gitattributes export-ignore)
     mkdir -p "${archive_dir}"
@@ -319,15 +324,11 @@ package_xfaiss() {
     cp "${XFAISS_VERSION_FILE}" "${archive_dir}/VERSION"
 
     # Create tarball
-    tar -czf "${PACKAGES_DIR}/${tarball_name}" -C "${temp_dir}" "xfaiss-${full_version}"
+    tar -czf "${PACKAGES_DIR}/${tarball_name}" -C "${temp_dir}" "xfaiss-${version}"
     rm -rf "${temp_dir}"
 
     log_info "Created: ${tarball_name}"
-
-    # Increment revision
-    _REVISION=$((_REVISION + 1))
-    write_version "${XFAISS_VERSION_FILE}" "${_BASE_VERSION}" "${_REVISION}" "${_UPSTREAM}"
-    log_info "xfaiss revision -> ${_BASE_VERSION}-${_REVISION}"
+    record_manifest "xfaiss" "${version}" "${git_hash}" "${tarball_name}"
 }
 
 # --- tag ---
@@ -372,16 +373,15 @@ tag_target() {
             ;;
     esac
 
-    local full_version
-    full_version=$(get_full_version "${version_file}")
-    local tag_name="${target}-v${full_version}"
+    read_version "${version_file}"
+    local tag_name="${target}-v${_VERSION}"
 
     if git -C "${repo_dir}" tag -l "${tag_name}" | grep -q "${tag_name}"; then
         log_warn "Tag ${tag_name} already exists in $(basename "${repo_dir}"), skipping"
         return
     fi
 
-    git -C "${repo_dir}" tag -a "${tag_name}" -m "Release ${target} ${full_version}"
+    git -C "${repo_dir}" tag -a "${tag_name}" -m "Release ${target} ${_VERSION}"
     log_info "Created tag: ${tag_name} in $(basename "${repo_dir}")"
 }
 
@@ -392,12 +392,13 @@ usage() {
 Usage: $(basename "$0") <command> [options]
 
 Unified deploy script for xvector-suite.
+Version is managed in each submodule's VERSION file (pure semver).
 
 Commands:
-  show [target]                      Show version(s)
-  bump <major|minor|patch> <target>  Bump semver, reset revision to 1
-  package [target]                   Build and package artifact(s), increment revision
-  tag [target]                       Create git tag(s)
+  show [target]      Show version(s)
+  package [target]   Build and package artifact(s)
+                     Records build in packages/manifest.json (requires jq)
+  tag [target]       Create git tag(s)
 
 Targets:
   xvector    libxvector-dev .deb package
@@ -408,8 +409,6 @@ Targets:
 Examples:
     $(basename "$0") show
     $(basename "$0") show xvector
-    $(basename "$0") bump patch xvector
-    $(basename "$0") bump minor all
     $(basename "$0") package
     $(basename "$0") package xfaiss
     $(basename "$0") tag all
@@ -424,14 +423,18 @@ main() {
         exit 1
     fi
 
+    if ! command -v jq &>/dev/null; then
+        log_error "jq is required but not installed. Install with: sudo apt install jq"
+        exit 1
+    fi
+
     local command="$1"
     shift
 
     case "${command}" in
-        show)    cmd_show "$@" ;;
-        bump)    cmd_bump "$@" ;;
-        package) cmd_package "$@" ;;
-        tag)     cmd_tag "$@" ;;
+        show)    verify_deploy_branches; cmd_show "$@" ;;
+        package) verify_deploy_branches; cmd_package "$@" ;;
+        tag)     verify_deploy_branches; cmd_tag "$@" ;;
         -h|--help) usage; exit 0 ;;
         *)
             log_error "Unknown command: ${command}"
