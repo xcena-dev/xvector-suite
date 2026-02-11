@@ -199,6 +199,18 @@ cmd_package() {
         package_xfaiss
     fi
 
+    # Generate documentation (optional — skipped if doxygen is not installed)
+    if command -v doxygen &>/dev/null; then
+        if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
+            docs_xvector
+        fi
+        if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
+            docs_xcompute
+        fi
+    else
+        log_warn "doxygen not found — skipping documentation. Install with: sudo apt install doxygen graphviz"
+    fi
+
     log_info ""
     log_info "Artifacts in ${PACKAGES_DIR}/:"
     ls -lh "${PACKAGES_DIR}/"
@@ -385,6 +397,63 @@ tag_target() {
     log_info "Created tag: ${tag_name} in $(basename "${repo_dir}")"
 }
 
+# --- docs (called from cmd_package) ---
+
+docs_xvector() {
+    read_version "${XVECTOR_VERSION_FILE}"
+    local version="${_VERSION}"
+    local doc_dir="${XVECTOR_DIR}/docs/doxygen-public"
+    local tarball_name="xvector-docs_${version}.tar.gz"
+
+    local git_hash
+    git_hash=$(get_git_hash "${XVECTOR_DIR}")
+
+    log_info "Generating xvector ${version} documentation (public API)..."
+
+    rm -rf "${doc_dir}"
+    if ! doxygen "${XVECTOR_DIR}/Doxyfile.release"; then
+        log_error "Doxygen failed for xvector"
+        exit 1
+    fi
+
+    if [[ ! -d "${doc_dir}/html" ]]; then
+        log_error "Documentation output not found: ${doc_dir}/html"
+        exit 1
+    fi
+
+    tar -czf "${PACKAGES_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/docs" "doxygen-public"
+    log_info "Created: ${tarball_name}"
+    record_manifest "xvector-docs" "${version}" "${git_hash}" "${tarball_name}"
+}
+
+docs_xcompute() {
+    read_version "${XCOMPUTE_VERSION_FILE}"
+    local version="${_VERSION}"
+    local doc_dir="${XVECTOR_DIR}/docs/doxygen-xcompute"
+    local tarball_name="xcompute-docs_${version}.tar.gz"
+
+    local git_hash
+    git_hash=$(get_git_hash "${XVECTOR_DIR}")
+
+    log_info "Generating xcompute ${version} documentation..."
+
+    rm -rf "${doc_dir}"
+    if ! doxygen "${XVECTOR_DIR}/Doxyfile.xcompute"; then
+        log_error "Doxygen failed for xcompute"
+        exit 1
+    fi
+
+    if [[ ! -d "${doc_dir}/html" ]]; then
+        log_error "Documentation output not found: ${doc_dir}/html"
+        exit 1
+    fi
+
+    tar -czf "${PACKAGES_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/docs" "doxygen-xcompute"
+    log_info "Created: ${tarball_name}"
+    record_manifest "xcompute-docs" "${version}" "${git_hash}" "${tarball_name}"
+}
+
+
 # --- Usage ---
 
 usage() {
@@ -396,13 +465,14 @@ Version is managed in each submodule's VERSION file (pure semver).
 
 Commands:
   show [target]      Show version(s)
-  package [target]   Build and package artifact(s)
+  package [target]   Build and package artifact(s), generate docs
                      Records build in packages/manifest.json (requires jq)
+                     Documentation requires doxygen and graphviz (optional)
   tag [target]       Create git tag(s)
 
 Targets:
-  xvector    libxvector-dev .deb package
-  xcompute   libxcompute-dev .deb package
+  xvector    libxvector-dev .deb package / API docs
+  xcompute   libxcompute-dev .deb package / API docs
   xfaiss     xfaiss source tarball
   all        All targets (default)
 
