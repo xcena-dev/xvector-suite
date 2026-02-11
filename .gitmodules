@@ -1,0 +1,6 @@
+[submodule "xvector-dev"]
+	path = xvector-dev
+	url = git@github.com:metisx-dev/xvector-dev.git
+[submodule "xfaiss"]
+	path = xfaiss
+	url = git@github.com:metisx-dev/xfaiss.git
