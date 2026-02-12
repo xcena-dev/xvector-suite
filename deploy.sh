@@ -199,7 +199,10 @@ cmd_package() {
         package_xfaiss
     fi
 
-    # Bundle pre-built documentation (requires 'xvector.sh docs build' in xvector-dev)
+    # Generate and bundle documentation
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
+        build_docs_xvector_dev
+    fi
     if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
         docs_xvector
     fi
@@ -395,6 +398,19 @@ tag_target() {
 
 # --- docs (called from cmd_package) ---
 
+build_docs_xvector_dev() {
+    log_info "Building documentation (MkDocs + Doxygen)..."
+    local xvector_sh="${XVECTOR_DIR}/scripts/xvector.sh"
+    if [[ ! -x "${xvector_sh}" ]]; then
+        log_error "xvector.sh not found: ${xvector_sh}"
+        exit 1
+    fi
+    if ! "${xvector_sh}" docs build; then
+        log_error "Documentation build failed"
+        exit 1
+    fi
+}
+
 docs_xvector() {
     read_version "${XVECTOR_VERSION_FILE}"
     local version="${_VERSION}"
@@ -406,7 +422,6 @@ docs_xvector() {
 
     if [[ ! -d "${site_dir}" ]]; then
         log_error "Documentation not found: ${site_dir}"
-        log_error "Run 'xvector.sh docs build' in xvector-dev first."
         exit 1
     fi
 
@@ -427,7 +442,6 @@ docs_xcompute() {
 
     if [[ ! -d "${site_dir}" ]]; then
         log_error "Documentation not found: ${site_dir}"
-        log_error "Run 'xvector.sh docs build' in xvector-dev first."
         exit 1
     fi
 
@@ -449,9 +463,9 @@ Version is managed in each submodule's VERSION file (pure semver).
 
 Commands:
   show [target]      Show version(s)
-  package [target]   Build and package artifact(s), bundle docs
+  package [target]   Build and package artifact(s), generate and bundle docs
                      Records build in packages/manifest.json (requires jq)
-                     Documentation requires 'xvector.sh docs build' to be run first
+                     Documentation generated via 'xvector.sh docs build'
   tag [target]       Create git tag(s)
 
 Targets:
