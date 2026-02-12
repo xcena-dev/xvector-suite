@@ -80,8 +80,6 @@ Tag creation is rejected if there are uncommitted changes.
 The following are required for xvector/xcompute packaging:
 
 - CMake 3.11+
-- pxl (MU accelerator SDK)
+- Parallel Xceleration Library (PXL)
 - mu_std (`/usr/local/mu_library/mu`)
 - dpkg-dev (cpack DEB generator)
-
-Using a dev-container environment is recommended.
