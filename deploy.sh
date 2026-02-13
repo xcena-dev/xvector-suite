@@ -182,6 +182,19 @@ cmd_package() {
     local target="${1:-all}"
     validate_target "${target}"
 
+    # Show submodule commit hashes for deployer review
+    log_info "Submodule commit hashes:"
+    echo "  xfaiss      $(git -C "${XFAISS_DIR}" rev-parse HEAD)  ($(get_current_branch "${XFAISS_DIR}"))"
+    echo "  xvector-dev $(git -C "${XVECTOR_DIR}" rev-parse HEAD)  ($(get_current_branch "${XVECTOR_DIR}"))"
+    echo ""
+    log_warn "If these are outdated, run 'git pull' in each submodule before packaging."
+    echo ""
+    read -rp "Proceed with packaging? [y/N] " confirm
+    if [[ "${confirm}" != [yY] ]]; then
+        log_info "Aborted."
+        exit 0
+    fi
+
     mkdir -p "${PACKAGES_DIR}"
 
     # Build xvector-dev once if packaging xvector or xcompute
