@@ -1,87 +1,65 @@
 # xvector-suite
 
-A monorepo for unified management of xvector-dev and xfaiss.
+Packaging and release management for xvector-dev and xfaiss.
 
 | Submodule | Description |
 |-----------|-------------|
-| `xvector-dev` | High-performance vector search library (libxvector-dev, libxcompute-dev) |
-| `xfaiss` | XCENA-modified FAISS fork (based on faiss 1.13.0) |
+| `xvector-dev` | Vector search library (libxvector-dev, libxcompute-dev) |
+| `xfaiss` | XCENA-modified FAISS fork |
 
 ## Setup
 
 ```bash
 git clone --recursive <repo-url>
-# Or from an existing clone:
-git submodule update --init
+```
+
+## Usage
+
+```bash
+./package.sh [command]       # Run with no args for interactive menu
+```
+
+| Command | Description |
+|---------|-------------|
+| `status` | Show repo state, versions, and build artifacts |
+| `show [target]` | Show version(s) and git hashes |
+| `sync` | Fetch latest submodule commits and update references |
+| `build [target]` | Build artifacts into `packages/build/` |
+| `bump <target> <type>` | Bump version (`major`, `minor`, `patch`) |
+| `tag [target]` | Create git tags, manifest, and GitHub Release |
+| `publish` | Deploy documentation to gh-pages |
+| `clean` | Remove `packages/build/` |
+
+**Targets:** `xvector`, `xcompute`, `xfaiss`, `all` (default)
+
+## Examples
+
+```bash
+./package.sh status
+./package.sh show xvector
+./package.sh sync
+./package.sh build
+./package.sh build xfaiss
+./package.sh bump xvector patch    # 0.1.0 -> 0.1.1
+./package.sh bump xfaiss minor     # 0.1.0 -> 0.2.0
+./package.sh tag all
+./package.sh publish
+./package.sh clean
 ```
 
 ## Version Management
 
-Each package has an independent version, following simple semver (`MAJOR.MINOR.PATCH`).
-Version is managed directly in each submodule's VERSION file.
+Each package follows semver (`MAJOR.MINOR.PATCH`) via VERSION files in submodules:
 
-| Package | VERSION File | Description |
-|---------|-------------|-------------|
-| xvector | `xvector-dev/VERSION` | libxvector-dev .deb package |
-| xcompute | `xvector-dev/VERSION_XCOMPUTE` | libxcompute-dev .deb package |
-| xfaiss | `xfaiss/VERSION` | xfaiss source tarball |
+| Package | VERSION File |
+|---------|-------------|
+| xvector | `xvector-dev/VERSION` |
+| xcompute | `xvector-dev/VERSION_XCOMPUTE` |
+| xfaiss | `xfaiss/VERSION` |
 
-## package.sh
+## Release Workflow
 
-### Check Version
-
-```bash
-./package.sh show              # Show all versions
-./package.sh show xvector      # Show xvector version only
-```
-
-### Sync Submodules
-
-```bash
-./package.sh sync              # Fetch latest and commit submodule references
-```
-
-### Build Packages
-
-```bash
-./package.sh build                # Package all
-./package.sh build xvector        # Generate libxvector-dev .deb only
-./package.sh build xcompute       # Generate libxcompute-dev .deb only
-./package.sh build xfaiss         # Generate xfaiss source tarball only
-```
-
-When packaging runs:
-1. xvector/xcompute: Builds via `xvector.sh build --clean --release`, then generates .deb with cpack
-2. xfaiss: Generates source tarball via `git archive` (`.gitattributes` export-ignore applied)
-
-### Bump Version
-
-```bash
-./package.sh bump xvector patch   # 0.1.0 -> 0.1.1
-./package.sh bump xcompute minor  # 0.1.0 -> 0.2.0
-./package.sh bump xfaiss minor    # 0.1.0 -> 0.2.0 (preserves upstream= line)
-```
-
-### Git Tag & Release
-
-```bash
-./package.sh tag                   # Tag all
-./package.sh tag xvector           # Tag xvector + xcompute (always together)
-./package.sh tag xfaiss            # Tag xfaiss only
-```
-
-The tag command performs the following steps:
-
-1. Verifies no uncommitted changes and build artifacts exist
-2. Copies artifacts to `packages/build-YYYYMMDD-<hash>/` with `manifest.json`
-3. Creates submodule tags:
-   - xvector/xcompute are always tagged together (same repo, same commit)
-   - xfaiss is tagged independently
-4. Commits `releases/manifest-<epoch>.json` to repo for history tracking
-5. Tags xvector-suite with `release-<epoch>`
-6. Pushes tag and creates a GitHub Release with all artifacts
-
-Tag formats:
+`tag` validates artifacts, creates per-component git tags, commits a manifest to `releases/`, and publishes a GitHub Release.
 
 | Scope | Tag Format | Repository |
 |-------|-----------|------------|
@@ -90,29 +68,6 @@ Tag formats:
 | xfaiss | `xfaiss-v{version}` | xfaiss |
 | suite | `release-{epoch}` | xvector-suite |
 
-### Interactive Mode
+## Dependencies
 
-```bash
-./package.sh                       # Launch interactive menu
-```
-
-## Release History
-
-Release manifests are tracked in `releases/manifest-<epoch>.json`.
-Each manifest records the date, versions, git hashes, and artifact list.
-
-To delete a published GitHub Release:
-```bash
-gh release delete <tag-name> --yes --cleanup-tag
-```
-
-## Build Dependencies
-
-The following are required for xvector/xcompute packaging:
-
-- CMake 3.11+
-- Parallel Xceleration Library (PXL)
-- mu_std (`/usr/local/mu_library/mu`)
-- dpkg-dev (cpack DEB generator)
-- jq
-- gh (GitHub CLI, for release upload)
+CMake 3.11+, PXL, mu_std, dpkg-dev, jq, gh (GitHub CLI)
