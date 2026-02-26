@@ -480,9 +480,17 @@ cmd_tag() {
         tag_target "xfaiss"
     fi
 
-    # Tag xvector-suite itself
+    # Save manifest to repo for history tracking
+    local releases_dir="${SUITE_ROOT}/releases"
     local epoch
     epoch=$(date +%s)
+    mkdir -p "${releases_dir}"
+    cp "${manifest}" "${releases_dir}/manifest-${epoch}.json"
+    git -C "${SUITE_ROOT}" add "releases/manifest-${epoch}.json"
+    git -C "${SUITE_ROOT}" commit -m "Add release manifest (xvector=${xv_ver}, xcompute=${xc_ver}, xfaiss=${xf_ver})"
+    log_info "Manifest committed: releases/manifest-${epoch}.json"
+
+    # Tag xvector-suite itself (after manifest commit)
     local suite_tag="release-${epoch}"
     git -C "${SUITE_ROOT}" tag -a "${suite_tag}" -m "Release ${date_str} (xvector=${xv_ver}, xcompute=${xc_ver}, xfaiss=${xf_ver})"
     log_info "Created tag: ${suite_tag} in xvector-suite"
@@ -494,6 +502,45 @@ cmd_tag() {
     log_info "  xfaiss        = ${xf_hash}"
     echo ""
     ls -lh "${release_dir}/"
+
+    # Push suite tag and create GitHub Release
+    echo ""
+    log_info "Pushing tag ${suite_tag} to origin..."
+    git -C "${SUITE_ROOT}" push origin HEAD "${suite_tag}"
+
+    # Collect artifact files (exclude manifest.json)
+    local release_files=()
+    for f in "${release_dir}"/*; do
+        [[ "$(basename "$f")" == "manifest.json" ]] && continue
+        release_files+=("${f}")
+    done
+    # Include manifest as well
+    release_files+=("${release_dir}/manifest.json")
+
+    local release_body
+    release_body=$(cat <<GHEOF
+## ${suite_tag}
+
+| Component | Version | Commit |
+|-----------|---------|--------|
+| xvector | ${xv_ver} | \`${xv_hash}\` |
+| xcompute | ${xc_ver} | \`${xv_hash}\` |
+| xfaiss | ${xf_ver} | \`${xf_hash}\` |
+
+**Suite commit:** \`$(git -C "${SUITE_ROOT}" rev-parse HEAD)\`
+GHEOF
+)
+
+    log_info "Creating GitHub Release ${suite_tag}..."
+    if gh release create "${suite_tag}" \
+        --title "${suite_tag}" \
+        --notes "${release_body}" \
+        "${release_files[@]}"; then
+        log_info "GitHub Release created: ${suite_tag}"
+    else
+        log_warn "GitHub Release creation failed. You can create it manually with:"
+        log_warn "  gh release create ${suite_tag} ${release_dir}/*"
+    fi
 }
 
 tag_target() {
