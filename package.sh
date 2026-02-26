@@ -710,6 +710,7 @@ Commands:
                      Bump version (major, minor, patch)
                      Targets: xvector, xcompute, xfaiss
   tag [target]       Create git tags and finalize release to packages/build-YYYYMMDD-<hash>/
+  publish            Publish documentation to gh-pages (always fresh, no stale files)
 
 Targets:
   xvector    libxvector-dev .deb package / API docs
@@ -726,6 +727,7 @@ Examples:
     $(basename "$0") bump xvector patch   # 0.1.0 -> 0.1.1
     $(basename "$0") bump xfaiss minor    # 0.1.0 -> 0.2.0 (preserves upstream= line)
     $(basename "$0") sync                 # Update submodules to latest remote
+    $(basename "$0") publish               # Publish docs to gh-pages
 EOF
 }
 
@@ -820,6 +822,52 @@ interactive_tag() {
     cmd_tag "${target}"
 }
 
+# --- publish (gh-pages) ---
+
+cmd_publish() {
+    local site_dir="${XVECTOR_DIR}/build/site"
+
+    if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xcompute" ]]; then
+        log_error "Documentation not found in ${site_dir}."
+        log_error "Run './package.sh build' first to generate docs."
+        exit 1
+    fi
+
+    log_info "Deploying documentation to gh-pages..."
+
+    # Work in a temporary clone to avoid touching the working tree
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap 'rm -rf "${tmp_dir}"' EXIT
+
+    # Copy site contents first (before any git ops in tmp)
+    cp -r "${site_dir}/." "${tmp_dir}/site"
+
+    # Initialize a fresh repo with an orphan gh-pages branch
+    git -C "${tmp_dir}" init -b gh-pages
+    git -C "${tmp_dir}" remote add origin "$(git -C "${SUITE_ROOT}" remote get-url origin)"
+
+    # Move site contents into the repo root
+    mv "${tmp_dir}/site"/* "${tmp_dir}/"
+    rmdir "${tmp_dir}/site"
+
+    # Add a .nojekyll so GitHub serves raw HTML
+    touch "${tmp_dir}/.nojekyll"
+
+    # Commit everything
+    git -C "${tmp_dir}" add -A
+    git -C "${tmp_dir}" commit -m "Deploy docs ($(date +%Y-%m-%d))"
+
+    # Force-push to gh-pages (replaces entire branch — always fresh)
+    log_info "Force-pushing to origin/gh-pages..."
+    git -C "${tmp_dir}" push --force origin gh-pages
+
+    log_info "Documentation deployed to gh-pages."
+    log_info "Contents:"
+    log_info "  /xvector/          MkDocs + Doxygen API reference"
+    log_info "  /xcompute/         MkDocs + Doxygen API reference"
+}
+
 # --- Main ---
 
 main() {
@@ -842,6 +890,7 @@ main() {
         tag)     verify_submodule_commits; cmd_tag "$@" ;;
         bump)    cmd_bump "$@" ;;
         sync)    cmd_sync "$@" ;;
+        publish) cmd_publish "$@" ;;
         -h|--help) usage; exit 0 ;;
         *)
             log_error "Unknown command: ${command}"
