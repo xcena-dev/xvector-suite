@@ -740,18 +740,20 @@ interactive_menu() {
     echo "  1) build    Sync submodules + build artifacts"
     echo "  2) bump     Bump version (after testing)"
     echo "  3) tag      Create git tags"
+    echo "  4) publish  Publish docs to gh-pages"
     echo ""
     echo "  h) help     Show full usage"
     echo "  q) quit"
     echo ""
 
     local choice
-    read -rp "  Select [1-3, h, q]: " choice
+    read -rp "  Select [1-4, h, q]: " choice
 
     case "${choice}" in
         1) interactive_build ;;
         2) interactive_bump ;;
         3) verify_submodule_commits; interactive_tag ;;
+        4) cmd_publish ;;
         h) usage ;;
         q) exit 0 ;;
         *) log_error "Invalid choice: ${choice}"; exit 1 ;;
