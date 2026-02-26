@@ -6,6 +6,7 @@ SUITE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 XVECTOR_DIR="${SUITE_ROOT}/xvector-dev"
 XFAISS_DIR="${SUITE_ROOT}/xfaiss"
 PACKAGES_DIR="${SUITE_ROOT}/packages"
+BUILD_DIR="${PACKAGES_DIR}/build"
 XVECTOR_SH="${XVECTOR_DIR}/scripts/xvector.sh"
 PACKAGING_SH="${XVECTOR_DIR}/scripts/packaging.sh"
 
@@ -67,7 +68,7 @@ print_summary() {
     local total_elapsed=$(( $(date +%s) - _PACKAGE_START ))
     echo ""
     echo -e "\033[1;35m╔══════════════════════════════════════════════════════════════════════╗\033[0m"
-    echo -e "\033[1;35m║  Packaging Summary                                                  ║\033[0m"
+    printf "\033[1;35m║  %-68s║\033[0m\n" "Packaging Summary"
     echo -e "\033[1;35m╠══════════════════════════════════════════════════════════════════════╣\033[0m"
     for i in "${!_STEP_NAMES[@]}"; do
         local dur
@@ -76,7 +77,7 @@ print_summary() {
             $((i + 1)) "${_STEP_TOTAL}" "${_STEP_NAMES[$i]}" "${dur}"
     done
     echo -e "\033[1;35m╠══════════════════════════════════════════════════════════════════════╣\033[0m"
-    printf "\033[1;35m║\033[0m  %-52s \033[1;33m%8s\033[0m \033[1;35m║\033[0m\n" \
+    printf "\033[1;35m║\033[0m  %-58s \033[1;33m%8s\033[0m \033[1;35m║\033[0m\n" \
         "Total" "$(format_duration ${total_elapsed})"
     echo -e "\033[1;35m╚══════════════════════════════════════════════════════════════════════╝\033[0m"
 }
@@ -127,119 +128,13 @@ verify_submodule_commits() {
     log_info "Submodule commits verified (xvector-dev=${actual_xvector:0:7}, xfaiss=${actual_xfaiss:0:7})"
 }
 
-# Check if local submodule HEAD matches remote branch HEAD (warning only)
-check_remote_freshness() {
-    log_info "Checking remote freshness..."
-    local has_warning=0
 
-    local local_hash remote_hash
-
-    # xvector-dev
-    local_hash=$(git -C "${XVECTOR_DIR}" rev-parse HEAD 2>/dev/null)
-    remote_hash=$(git -C "${XVECTOR_DIR}" ls-remote origin "refs/heads/${XVECTOR_DEFAULT_BRANCH}" 2>/dev/null | awk '{print $1}')
-    if [[ -z "${remote_hash}" ]]; then
-        log_warn "xvector-dev: could not reach remote (offline?)"
-        has_warning=1
-    elif [[ "${local_hash}" != "${remote_hash}" ]]; then
-        log_warn "xvector-dev is behind origin/${XVECTOR_DEFAULT_BRANCH}:"
-        log_warn "  local:  ${local_hash:0:12}"
-        log_warn "  remote: ${remote_hash:0:12}"
-        has_warning=1
-    else
-        log_info "xvector-dev: up to date with origin/${XVECTOR_DEFAULT_BRANCH} (${local_hash:0:7})"
-    fi
-
-    # xfaiss
-    local_hash=$(git -C "${XFAISS_DIR}" rev-parse HEAD 2>/dev/null)
-    remote_hash=$(git -C "${XFAISS_DIR}" ls-remote origin "refs/heads/${XFAISS_DEFAULT_BRANCH}" 2>/dev/null | awk '{print $1}')
-    if [[ -z "${remote_hash}" ]]; then
-        log_warn "xfaiss: could not reach remote (offline?)"
-        has_warning=1
-    elif [[ "${local_hash}" != "${remote_hash}" ]]; then
-        log_warn "xfaiss is behind origin/${XFAISS_DEFAULT_BRANCH}:"
-        log_warn "  local:  ${local_hash:0:12}"
-        log_warn "  remote: ${remote_hash:0:12}"
-        has_warning=1
-    else
-        log_info "xfaiss: up to date with origin/${XFAISS_DEFAULT_BRANCH} (${local_hash:0:7})"
-    fi
-
-    if [[ ${has_warning} -ne 0 ]]; then
-        log_warn "Some submodules may not be at the latest remote commit."
-        log_warn "Consider running 'git pull' in the submodule(s) before packaging."
-    fi
-    echo ""
-}
-
-# --- Manifest helpers ---
-
-MANIFEST_FILE="${PACKAGES_DIR}/manifest.json"
+# --- Helpers ---
 
 # Get full git hash for a repo
 get_git_hash() {
     local repo_dir="$1"
     git -C "${repo_dir}" rev-parse HEAD
-}
-
-# Check manifest for version+hash conflict
-# If same version exists with a different hash → error (must bump VERSION in submodule)
-check_manifest_conflict() {
-    local target="$1"
-    local version="$2"
-    local git_hash="$3"
-
-    if [[ ! -f "${MANIFEST_FILE}" ]]; then
-        return 0
-    fi
-
-    local existing_hash
-    existing_hash=$(jq -r --arg t "${target}" --arg v "${version}" \
-        '(.[$t] // [])[] | select(.version == $v) | .git_hash' \
-        "${MANIFEST_FILE}")
-
-    if [[ -z "${existing_hash}" ]]; then
-        return 0
-    fi
-
-    if [[ "${existing_hash}" == "${git_hash}" ]]; then
-        return 0
-    fi
-
-    log_error "Version ${version} for ${target} was already built from a different source (${existing_hash})."
-    log_error "Current source is ${git_hash}. Bump the VERSION in the submodule first."
-    exit 1
-}
-
-# Record build entry in manifest.json
-record_manifest() {
-    local target="$1"
-    local version="$2"
-    local git_hash="$3"
-    local artifact="$4"
-
-    if [[ ! -f "${MANIFEST_FILE}" ]]; then
-        echo '{}' > "${MANIFEST_FILE}"
-    fi
-
-    local timestamp
-    timestamp=$(date +%s)
-
-    local new_entry
-    new_entry=$(jq -n --arg v "${version}" --arg h "${git_hash}" \
-        --arg a "${artifact}" --argjson ts "${timestamp}" \
-        '{version:$v, git_hash:$h, artifact:$a, timestamp:$ts}')
-
-    local updated
-    updated=$(jq --arg t "${target}" --arg v "${version}" --argjson entry "${new_entry}" '
-        if .[$t] == null then .[$t] = [] else . end
-        | if ([.[$t][] | select(.version == $v)] | length) > 0
-          then .[$t] = [.[$t][] | if .version == $v then $entry else . end]
-          else .[$t] += [$entry]
-          end
-    ' "${MANIFEST_FILE}")
-
-    echo "${updated}" > "${MANIFEST_FILE}"
-    log_info "Recorded ${target} ${version} (${git_hash}) in manifest"
 }
 
 # --- Version helpers ---
@@ -362,22 +257,7 @@ cmd_package() {
     local target="${1:-all}"
     validate_target "${target}"
 
-    # Show submodule commit hashes for deployer review
-    log_info "Submodule commit hashes:"
-    echo "  xfaiss      $(git -C "${XFAISS_DIR}" rev-parse HEAD)  ($(get_current_branch "${XFAISS_DIR}"))"
-    echo "  xvector-dev $(git -C "${XVECTOR_DIR}" rev-parse HEAD)  ($(get_current_branch "${XVECTOR_DIR}"))"
-    echo ""
-
-    # Check against remote (warning only, not blocking)
-    check_remote_freshness
-
-    read -rp "Proceed with packaging? [y/N] " confirm
-    if [[ "${confirm}" != [yY] ]]; then
-        log_info "Aborted."
-        exit 0
-    fi
-
-    mkdir -p "${PACKAGES_DIR}"
+    mkdir -p "${BUILD_DIR}"
 
     if [[ ! -x "${XVECTOR_SH}" ]]; then
         log_error "xvector.sh not found: ${XVECTOR_SH}"
@@ -463,50 +343,24 @@ cmd_package() {
     print_summary
 
     echo ""
-    log_info "Artifacts in ${PACKAGES_DIR}/:"
-    ls -lh "${PACKAGES_DIR}/"
+    log_info "Artifacts in ${BUILD_DIR}/:"
+    ls -lh "${BUILD_DIR}/"
 }
 
 package_deb() {
-    read_version "${XVECTOR_VERSION_FILE}"
-    local xvector_version="${_VERSION}"
-    read_version "${XCOMPUTE_VERSION_FILE}"
-    local xcompute_version="${_VERSION}"
-
-    local git_hash
-    git_hash=$(get_git_hash "${XVECTOR_DIR}")
-    check_manifest_conflict "xvector" "${xvector_version}" "${git_hash}"
-    check_manifest_conflict "xcompute" "${xcompute_version}" "${git_hash}"
-
     log_info "Creating Debian packages..."
-    if ! "${PACKAGING_SH}" deb --output "${PACKAGES_DIR}"; then
+    if ! "${PACKAGING_SH}" deb --output "${BUILD_DIR}"; then
         log_error "Debian package creation failed"
         exit 1
     fi
-
-    local xvector_deb="libxvector-dev_${xvector_version}_amd64.deb"
-    local xcompute_deb="libxcompute-dev_${xcompute_version}_amd64.deb"
-    record_manifest "xvector" "${xvector_version}" "${git_hash}" "${xvector_deb}"
-    record_manifest "xcompute" "${xcompute_version}" "${git_hash}" "${xcompute_deb}"
 }
 
 package_examples() {
-    read_version "${XCOMPUTE_VERSION_FILE}"
-    local version="${_VERSION}"
-
-    local git_hash
-    git_hash=$(get_git_hash "${XVECTOR_DIR}")
-
-    local tarball_name="xcompute-examples-${version}.tar.gz"
-    check_manifest_conflict "xcompute-examples" "${version}" "${git_hash}"
-
     log_info "Creating xcompute examples tarball..."
-    if ! "${PACKAGING_SH}" examples --output "${PACKAGES_DIR}"; then
+    if ! "${PACKAGING_SH}" examples --output "${BUILD_DIR}"; then
         log_error "Examples tarball creation failed"
         exit 1
     fi
-
-    record_manifest "xcompute-examples" "${version}" "${git_hash}" "${tarball_name}"
 }
 
 package_xfaiss() {
@@ -514,10 +368,6 @@ package_xfaiss() {
     local version="${_VERSION}"
     local upstream_short="${_UPSTREAM#faiss-}"
     local tarball_name="xfaiss-${version}+faiss${upstream_short}-source.tar.gz"
-
-    local git_hash
-    git_hash=$(get_git_hash "${XFAISS_DIR}")
-    check_manifest_conflict "xfaiss" "${version}" "${git_hash}"
 
     log_info "Creating ${tarball_name}..."
 
@@ -538,11 +388,10 @@ package_xfaiss() {
     cp "${XFAISS_VERSION_FILE}" "${archive_dir}/VERSION"
 
     # Create tarball
-    tar -czf "${PACKAGES_DIR}/${tarball_name}" -C "${temp_dir}" "xfaiss-${version}"
+    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${temp_dir}" "xfaiss-${version}"
     rm -rf "${temp_dir}"
 
     log_info "Created: ${tarball_name}"
-    record_manifest "xfaiss" "${version}" "${git_hash}" "${tarball_name}"
 }
 
 # --- tag ---
@@ -557,6 +406,69 @@ cmd_tag() {
         exit 1
     fi
 
+    # Verify build artifacts exist
+    if [[ ! -d "${BUILD_DIR}" ]] || [[ -z "$(ls -A "${BUILD_DIR}" 2>/dev/null)" ]]; then
+        log_error "No build artifacts found in ${BUILD_DIR}. Run build first."
+        exit 1
+    fi
+
+    # Create release directory: build-YYYYMMDD-<suite_hash>
+    local date_str suite_hash release_name release_dir
+    date_str=$(date +%Y%m%d)
+    suite_hash=$(git -C "${SUITE_ROOT}" rev-parse --short=7 HEAD)
+    release_name="build-${date_str}-${suite_hash}"
+    release_dir="${PACKAGES_DIR}/${release_name}"
+
+    if [[ -d "${release_dir}" ]]; then
+        log_error "Release directory already exists: ${release_dir}"
+        exit 1
+    fi
+
+    # Copy build artifacts to release directory
+    cp -r "${BUILD_DIR}" "${release_dir}"
+    log_info "Artifacts copied to ${release_dir}/"
+
+    # Record manifest in release directory
+    local manifest="${release_dir}/manifest.json"
+    local xv_hash xf_hash
+    xv_hash=$(get_git_hash "${XVECTOR_DIR}")
+    xf_hash=$(get_git_hash "${XFAISS_DIR}")
+
+    read_version "${XVECTOR_VERSION_FILE}";  local xv_ver="${_VERSION}"
+    read_version "${XCOMPUTE_VERSION_FILE}"; local xc_ver="${_VERSION}"
+    read_xfaiss_version "${XFAISS_VERSION_FILE}"; local xf_ver="${_VERSION}"
+
+    jq -n \
+        --arg suite_hash "$(git -C "${SUITE_ROOT}" rev-parse HEAD)" \
+        --arg xv_hash "${xv_hash}" \
+        --arg xf_hash "${xf_hash}" \
+        --arg xv_ver "${xv_ver}" \
+        --arg xc_ver "${xc_ver}" \
+        --arg xf_ver "${xf_ver}" \
+        --arg date "${date_str}" \
+        '{
+            date: $date,
+            suite_commit: $suite_hash,
+            xvector: { version: $xv_ver, git_hash: $xv_hash },
+            xcompute: { version: $xc_ver, git_hash: $xv_hash },
+            xfaiss: { version: $xf_ver, git_hash: $xf_hash },
+            artifacts: []
+        }' > "${manifest}"
+
+    # List artifacts
+    local artifacts=()
+    for f in "${release_dir}"/*; do
+        [[ "$(basename "$f")" == "manifest.json" ]] && continue
+        artifacts+=("$(basename "$f")")
+    done
+    local artifacts_json
+    artifacts_json=$(printf '%s\n' "${artifacts[@]}" | jq -R . | jq -s .)
+    jq --argjson arts "${artifacts_json}" '.artifacts = $arts' "${manifest}" > "${manifest}.tmp"
+    mv "${manifest}.tmp" "${manifest}"
+
+    log_info "Manifest written: ${manifest}"
+
+    # Create git tags
     if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
         tag_target "xvector"
     fi
@@ -566,6 +478,10 @@ cmd_tag() {
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         tag_target "xfaiss"
     fi
+
+    echo ""
+    log_info "Release: ${release_name}"
+    ls -lh "${release_dir}/"
 }
 
 tag_target() {
@@ -602,6 +518,14 @@ tag_target() {
 # --- docs (called from cmd_package) ---
 
 build_docs_xvector_dev() {
+    if [[ ! -d "${XVECTOR_DIR}/.venv" ]]; then
+        log_info "Python venv not found. Running setup..."
+        if ! "${XVECTOR_SH}" setup; then
+            log_error "Setup failed"
+            exit 1
+        fi
+    fi
+
     log_info "Building documentation (MkDocs + Doxygen)..."
     if ! "${XVECTOR_SH}" docs build; then
         log_error "Documentation build failed"
@@ -615,18 +539,14 @@ docs_xvector() {
     local site_dir="${XVECTOR_DIR}/build/site/xvector"
     local tarball_name="xvector-docs_${version}.tar.gz"
 
-    local git_hash
-    git_hash=$(get_git_hash "${XVECTOR_DIR}")
-
     if [[ ! -d "${site_dir}" ]]; then
         log_error "Documentation not found: ${site_dir}"
         exit 1
     fi
 
     log_info "Packaging xvector ${version} documentation..."
-    tar -czf "${PACKAGES_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site" "xvector"
+    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site" "xvector"
     log_info "Created: ${tarball_name}"
-    record_manifest "xvector-docs" "${version}" "${git_hash}" "${tarball_name}"
 }
 
 docs_xcompute() {
@@ -635,20 +555,80 @@ docs_xcompute() {
     local site_dir="${XVECTOR_DIR}/build/site/xcompute"
     local tarball_name="xcompute-docs_${version}.tar.gz"
 
-    local git_hash
-    git_hash=$(get_git_hash "${XVECTOR_DIR}")
-
     if [[ ! -d "${site_dir}" ]]; then
         log_error "Documentation not found: ${site_dir}"
         exit 1
     fi
 
     log_info "Packaging xcompute ${version} documentation..."
-    tar -czf "${PACKAGES_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site" "xcompute"
+    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site" "xcompute"
     log_info "Created: ${tarball_name}"
-    record_manifest "xcompute-docs" "${version}" "${git_hash}" "${tarball_name}"
 }
 
+
+# --- sync ---
+
+cmd_sync() {
+    local changed=0
+
+    # xvector-dev
+    log_info "Fetching xvector-dev origin/${XVECTOR_DEFAULT_BRANCH}..."
+    git -C "${XVECTOR_DIR}" fetch origin "${XVECTOR_DEFAULT_BRANCH}"
+
+    local xv_before xv_after
+    xv_before=$(git -C "${XVECTOR_DIR}" rev-parse HEAD)
+    xv_after=$(git -C "${XVECTOR_DIR}" rev-parse "origin/${XVECTOR_DEFAULT_BRANCH}")
+
+    if [[ "${xv_before}" != "${xv_after}" ]]; then
+        git -C "${XVECTOR_DIR}" checkout "${XVECTOR_DEFAULT_BRANCH}" 2>/dev/null \
+            || git -C "${XVECTOR_DIR}" checkout -b "${XVECTOR_DEFAULT_BRANCH}" "origin/${XVECTOR_DEFAULT_BRANCH}"
+        git -C "${XVECTOR_DIR}" merge --ff-only "origin/${XVECTOR_DEFAULT_BRANCH}"
+        log_info "xvector-dev: ${xv_before:0:7} -> ${xv_after:0:7}"
+        changed=1
+    else
+        log_info "xvector-dev: already up to date (${xv_before:0:7})"
+    fi
+
+    # xfaiss
+    log_info "Fetching xfaiss origin/${XFAISS_DEFAULT_BRANCH}..."
+    git -C "${XFAISS_DIR}" fetch origin "${XFAISS_DEFAULT_BRANCH}"
+
+    local xf_before xf_after
+    xf_before=$(git -C "${XFAISS_DIR}" rev-parse HEAD)
+    xf_after=$(git -C "${XFAISS_DIR}" rev-parse "origin/${XFAISS_DEFAULT_BRANCH}")
+
+    if [[ "${xf_before}" != "${xf_after}" ]]; then
+        git -C "${XFAISS_DIR}" checkout "${XFAISS_DEFAULT_BRANCH}" 2>/dev/null \
+            || git -C "${XFAISS_DIR}" checkout -b "${XFAISS_DEFAULT_BRANCH}" "origin/${XFAISS_DEFAULT_BRANCH}"
+        git -C "${XFAISS_DIR}" merge --ff-only "origin/${XFAISS_DEFAULT_BRANCH}"
+        log_info "xfaiss: ${xf_before:0:7} -> ${xf_after:0:7}"
+        changed=1
+    else
+        log_info "xfaiss: already up to date (${xf_before:0:7})"
+    fi
+
+    # Check if parent repo's recorded commits differ from actual submodule HEADs
+    local expected_xv expected_xf actual_xv actual_xf
+    expected_xv=$(get_expected_hash "xvector-dev")
+    expected_xf=$(get_expected_hash "xfaiss")
+    actual_xv=$(git -C "${XVECTOR_DIR}" rev-parse HEAD)
+    actual_xf=$(git -C "${XFAISS_DIR}" rev-parse HEAD)
+
+    if [[ "${expected_xv}" != "${actual_xv}" || "${expected_xf}" != "${actual_xf}" ]]; then
+        changed=1
+    fi
+
+    # Commit updated submodule references in parent repo
+    if [[ ${changed} -ne 0 ]]; then
+        echo ""
+        git -C "${SUITE_ROOT}" add xvector-dev xfaiss
+        git -C "${SUITE_ROOT}" commit -m "Update submodule references for xvector-dev and xfaiss"
+        log_info "Submodule references committed."
+    else
+        echo ""
+        log_info "Nothing to update."
+    fi
+}
 
 # --- Usage ---
 
@@ -661,13 +641,12 @@ Version is managed in each submodule's VERSION file (pure semver).
 
 Commands:
   show [target]      Show version(s)
-  build [target]     Build and package artifact(s), generate and bundle docs
-                     Records build in packages/manifest.json (requires jq)
-                     Documentation generated via 'xvector.sh docs build'
-  tag [target]       Create git tag(s)
+  sync               Fetch latest submodule commits and commit references
+  build [target]     Build artifacts into packages/build/
   bump <target> <type>
                      Bump version (major, minor, patch)
                      Targets: xvector, xcompute, xfaiss
+  tag [target]       Create git tags and finalize release to packages/build-YYYYMMDD-<hash>/
 
 Targets:
   xvector    libxvector-dev .deb package / API docs
@@ -683,20 +662,114 @@ Examples:
     $(basename "$0") tag all
     $(basename "$0") bump xvector patch   # 0.1.0 -> 0.1.1
     $(basename "$0") bump xfaiss minor    # 0.1.0 -> 0.2.0 (preserves upstream= line)
+    $(basename "$0") sync                 # Update submodules to latest remote
 EOF
+}
+
+# --- Interactive menu ---
+
+interactive_menu() {
+    echo ""
+    echo -e "\033[1;36m  xvector-suite packaging\033[0m"
+    echo ""
+    echo "  1) build    Sync submodules + build artifacts"
+    echo "  2) bump     Bump version (after testing)"
+    echo "  3) tag      Create git tags"
+    echo ""
+    echo "  h) help     Show full usage"
+    echo "  q) quit"
+    echo ""
+
+    local choice
+    read -rp "  Select [1-3, h, q]: " choice
+
+    case "${choice}" in
+        1) interactive_build ;;
+        2) interactive_bump ;;
+        3) verify_submodule_commits; interactive_tag ;;
+        h) usage ;;
+        q) exit 0 ;;
+        *) log_error "Invalid choice: ${choice}"; exit 1 ;;
+    esac
+}
+
+interactive_bump() {
+    echo ""
+    echo "  Target:"
+    echo "    1) xvector"
+    echo "    2) xcompute"
+    echo "    3) xfaiss"
+    echo ""
+    local target_choice
+    read -rp "  Select target [1-3]: " target_choice
+    local target
+    case "${target_choice}" in
+        1) target="xvector" ;;
+        2) target="xcompute" ;;
+        3) target="xfaiss" ;;
+        *) log_error "Invalid target"; exit 1 ;;
+    esac
+
+    echo ""
+    echo "  Bump type:"
+    echo "    1) patch  (0.1.0 -> 0.1.1)"
+    echo "    2) minor  (0.1.0 -> 0.2.0)"
+    echo "    3) major  (0.1.0 -> 1.0.0)"
+    echo ""
+    local type_choice
+    read -rp "  Select type [1-3]: " type_choice
+    local bump_type
+    case "${type_choice}" in
+        1) bump_type="patch" ;;
+        2) bump_type="minor" ;;
+        3) bump_type="major" ;;
+        *) log_error "Invalid bump type"; exit 1 ;;
+    esac
+
+    cmd_bump "${target}" "${bump_type}"
+}
+
+interactive_build() {
+    cmd_sync
+    verify_submodule_commits
+    cmd_show
+    echo ""
+    cmd_package "all"
+}
+
+interactive_tag() {
+    echo ""
+    echo "  Target:"
+    echo "    1) all"
+    echo "    2) xvector"
+    echo "    3) xcompute"
+    echo "    4) xfaiss"
+    echo ""
+    local choice
+    read -rp "  Select target [1-4]: " choice
+    local target
+    case "${choice}" in
+        1) target="all" ;;
+        2) target="xvector" ;;
+        3) target="xcompute" ;;
+        4) target="xfaiss" ;;
+        *) log_error "Invalid target"; exit 1 ;;
+    esac
+
+    cmd_tag "${target}"
 }
 
 # --- Main ---
 
 main() {
-    if [[ $# -lt 1 ]]; then
-        usage
-        exit 1
-    fi
-
     if ! command -v jq &>/dev/null; then
         log_error "jq is required but not installed. Install with: sudo apt install jq"
         exit 1
+    fi
+
+    if [[ $# -lt 1 ]]; then
+        interactive_menu
+        exit 0
     fi
 
     local command="$1"
@@ -707,6 +780,7 @@ main() {
         build)   verify_submodule_commits; cmd_package "$@" ;;
         tag)     verify_submodule_commits; cmd_tag "$@" ;;
         bump)    cmd_bump "$@" ;;
+        sync)    cmd_sync "$@" ;;
         -h|--help) usage; exit 0 ;;
         *)
             log_error "Unknown command: ${command}"
