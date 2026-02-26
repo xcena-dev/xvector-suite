@@ -6,10 +6,7 @@ SUITE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 XVECTOR_DIR="${SUITE_ROOT}/xvector-dev"
 XFAISS_DIR="${SUITE_ROOT}/xfaiss"
 PACKAGES_DIR="${SUITE_ROOT}/packages"
-
-# Deploy branch configuration
-XVECTOR_DEPLOY_BRANCH="main"
-XFAISS_DEPLOY_BRANCH="faiss-1.13.0-xcena"
+XVECTOR_SH="${XVECTOR_DIR}/scripts/xvector.sh"
 
 # VERSION file paths
 XVECTOR_VERSION_FILE="${XVECTOR_DIR}/VERSION"
@@ -21,7 +18,65 @@ log_info()  { echo -e "\033[0;32m[INFO]\033[0m  $*"; }
 log_error() { echo -e "\033[0;31m[ERROR]\033[0m $*" >&2; }
 log_warn()  { echo -e "\033[0;33m[WARN]\033[0m  $*"; }
 
-# --- Submodule branch verification ---
+# --- Step tracking & timing ---
+_STEP_NUM=0
+_STEP_TOTAL=0
+_STEP_START=0
+_PACKAGE_START=0
+declare -a _STEP_TIMES=()
+declare -a _STEP_NAMES=()
+
+# Format seconds into human-readable duration
+format_duration() {
+    local secs="$1"
+    if (( secs >= 60 )); then
+        printf "%dm %ds" $((secs / 60)) $((secs % 60))
+    else
+        printf "%ds" "${secs}"
+    fi
+}
+
+# Begin a numbered step: step_begin <total> <description>
+step_begin() {
+    local total="$1"; shift
+    local desc="$*"
+    _STEP_TOTAL="${total}"
+    ((_STEP_NUM++))
+    _STEP_START=$(date +%s)
+    _STEP_NAMES+=("${desc}")
+    echo ""
+    echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo -e "\033[1;36m  [${_STEP_NUM}/${total}] ${desc}\033[0m"
+    echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+}
+
+# End current step, record elapsed time
+step_end() {
+    local elapsed=$(( $(date +%s) - _STEP_START ))
+    _STEP_TIMES+=("${elapsed}")
+    echo -e "\033[0;32m  ✓ Done ($(format_duration ${elapsed}))\033[0m"
+}
+
+# Print final timing summary
+print_summary() {
+    local total_elapsed=$(( $(date +%s) - _PACKAGE_START ))
+    echo ""
+    echo -e "\033[1;35m╔══════════════════════════════════════════════════════════════════════╗\033[0m"
+    echo -e "\033[1;35m║  Packaging Summary                                                  ║\033[0m"
+    echo -e "\033[1;35m╠══════════════════════════════════════════════════════════════════════╣\033[0m"
+    for i in "${!_STEP_NAMES[@]}"; do
+        local dur
+        dur=$(format_duration "${_STEP_TIMES[$i]}")
+        printf "\033[1;35m║\033[0m  [%d/%d] %-52s %8s \033[1;35m║\033[0m\n" \
+            $((i + 1)) "${_STEP_TOTAL}" "${_STEP_NAMES[$i]}" "${dur}"
+    done
+    echo -e "\033[1;35m╠══════════════════════════════════════════════════════════════════════╣\033[0m"
+    printf "\033[1;35m║\033[0m  %-52s \033[1;33m%8s\033[0m \033[1;35m║\033[0m\n" \
+        "Total" "$(format_duration ${total_elapsed})"
+    echo -e "\033[1;35m╚══════════════════════════════════════════════════════════════════════╝\033[0m"
+}
+
+# --- Submodule commit verification ---
 
 # Get current branch name for a git repo
 get_current_branch() {
@@ -29,42 +84,52 @@ get_current_branch() {
     git -C "${repo_dir}" rev-parse --abbrev-ref HEAD 2>/dev/null
 }
 
-# Verify submodules are on their deploy branches
-verify_deploy_branches() {
+# Get the commit hash that the parent repo expects for a submodule
+get_expected_hash() {
+    local submodule_path="$1"
+    git -C "${SUITE_ROOT}" ls-tree HEAD -- "${submodule_path}" | awk '{print $3}'
+}
+
+# Verify submodules are at the commit hashes recorded in xvector-suite
+verify_submodule_commits() {
     local failed=0
 
-    local xvector_branch
-    xvector_branch=$(get_current_branch "${XVECTOR_DIR}")
-    if [[ "${xvector_branch}" != "${XVECTOR_DEPLOY_BRANCH}" ]]; then
-        log_error "xvector-dev is on branch '${xvector_branch}', expected '${XVECTOR_DEPLOY_BRANCH}'"
+    local expected_xvector actual_xvector
+    expected_xvector=$(get_expected_hash "xvector-dev")
+    actual_xvector=$(git -C "${XVECTOR_DIR}" rev-parse HEAD 2>/dev/null)
+    if [[ "${actual_xvector}" != "${expected_xvector}" ]]; then
+        log_error "xvector-dev commit mismatch:"
+        log_error "  expected: ${expected_xvector:0:12}"
+        log_error "  actual:   ${actual_xvector:0:12}"
         failed=1
     fi
 
-    local xfaiss_branch
-    xfaiss_branch=$(get_current_branch "${XFAISS_DIR}")
-    if [[ "${xfaiss_branch}" != "${XFAISS_DEPLOY_BRANCH}" ]]; then
-        log_error "xfaiss is on branch '${xfaiss_branch}', expected '${XFAISS_DEPLOY_BRANCH}'"
+    local expected_xfaiss actual_xfaiss
+    expected_xfaiss=$(get_expected_hash "xfaiss")
+    actual_xfaiss=$(git -C "${XFAISS_DIR}" rev-parse HEAD 2>/dev/null)
+    if [[ "${actual_xfaiss}" != "${expected_xfaiss}" ]]; then
+        log_error "xfaiss commit mismatch:"
+        log_error "  expected: ${expected_xfaiss:0:12}"
+        log_error "  actual:   ${actual_xfaiss:0:12}"
         failed=1
     fi
 
     if [[ ${failed} -ne 0 ]]; then
-        log_error "Submodule branch mismatch. Please checkout the correct deploy branches."
-        log_info "  cd xvector-dev && git checkout ${XVECTOR_DEPLOY_BRANCH}"
-        log_info "  cd xfaiss     && git checkout ${XFAISS_DEPLOY_BRANCH}"
+        log_error "Submodule commit mismatch. Run 'git submodule update --init' to sync."
         exit 1
     fi
 
-    log_info "Deploy branches verified (xvector-dev=${xvector_branch}, xfaiss=${xfaiss_branch})"
+    log_info "Submodule commits verified (xvector-dev=${actual_xvector:0:7}, xfaiss=${actual_xfaiss:0:7})"
 }
 
 # --- Manifest helpers ---
 
 MANIFEST_FILE="${PACKAGES_DIR}/manifest.json"
 
-# Get short git hash for a repo
+# Get full git hash for a repo
 get_git_hash() {
     local repo_dir="$1"
-    git -C "${repo_dir}" rev-parse --short HEAD
+    git -C "${repo_dir}" rev-parse HEAD
 }
 
 # Check manifest for version+hash conflict
@@ -164,15 +229,15 @@ cmd_show() {
 
     if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
         read_version "${XVECTOR_VERSION_FILE}"
-        echo "xvector    ${_VERSION}"
+        echo "xvector    ${_VERSION} ($(git -C "${XVECTOR_DIR}" rev-parse HEAD))"
     fi
     if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
         read_version "${XCOMPUTE_VERSION_FILE}"
-        echo "xcompute   ${_VERSION}"
+        echo "xcompute   ${_VERSION} ($(git -C "${XVECTOR_DIR}" rev-parse HEAD))"
     fi
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         read_xfaiss_version "${XFAISS_VERSION_FILE}"
-        echo "xfaiss     ${_VERSION} (upstream=${_UPSTREAM})"
+        echo "xfaiss     ${_VERSION} ($(git -C "${XFAISS_DIR}" rev-parse HEAD)) upstream=${_UPSTREAM}"
     fi
 }
 
@@ -197,126 +262,134 @@ cmd_package() {
 
     mkdir -p "${PACKAGES_DIR}"
 
-    # Build xvector-dev once if packaging xvector or xcompute
-    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
-        package_build_xvector_dev
+    if [[ ! -x "${XVECTOR_SH}" ]]; then
+        log_error "xvector.sh not found: ${XVECTOR_SH}"
+        exit 1
     fi
 
-    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
-        package_xvector
+    # Count total steps based on target
+    local total_steps=0
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
+        ((total_steps += 3))  # build + deb + docs build
     fi
     if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
-        package_xcompute
+        ((total_steps += 1))  # examples
     fi
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
-        package_xfaiss
-    fi
-
-    # Generate and bundle documentation
-    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
-        build_docs_xvector_dev
+        ((total_steps += 1))  # xfaiss archive
     fi
     if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
-        docs_xvector
+        ((total_steps += 1))  # xvector docs package
     fi
     if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
-        docs_xcompute
+        ((total_steps += 1))  # xcompute docs package
     fi
 
-    log_info ""
+    _STEP_NUM=0
+    _STEP_TIMES=()
+    _STEP_NAMES=()
+    _PACKAGE_START=$(date +%s)
+
+    # 1. Build xvector-dev (clean release)
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
+        step_begin "${total_steps}" "Build xvector-dev (clean release)"
+        if ! "${XVECTOR_SH}" build --release --clean; then
+            log_error "xvector-dev build failed"
+            exit 1
+        fi
+        step_end
+    fi
+
+    # 2. Create .deb packages (libxvector-dev + libxcompute-dev)
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
+        step_begin "${total_steps}" "Create Debian packages"
+        package_deb
+        step_end
+    fi
+
+    # 3. Create xcompute examples tarball
+    if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
+        step_begin "${total_steps}" "Create xcompute examples tarball"
+        package_examples
+        step_end
+    fi
+
+    # 4. Create xfaiss source archive
+    if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
+        step_begin "${total_steps}" "Create xfaiss source archive"
+        package_xfaiss
+        step_end
+    fi
+
+    # 5. Build documentation (MkDocs + Doxygen)
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
+        step_begin "${total_steps}" "Build documentation (MkDocs + Doxygen)"
+        build_docs_xvector_dev
+        step_end
+    fi
+
+    # 6. Package xvector docs
+    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
+        step_begin "${total_steps}" "Package xvector documentation"
+        docs_xvector
+        step_end
+    fi
+
+    # 7. Package xcompute docs
+    if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
+        step_begin "${total_steps}" "Package xcompute documentation"
+        docs_xcompute
+        step_end
+    fi
+
+    # Print timing summary
+    print_summary
+
+    echo ""
     log_info "Artifacts in ${PACKAGES_DIR}/:"
     ls -lh "${PACKAGES_DIR}/"
 }
 
-package_build_xvector_dev() {
-    log_info "Building xvector-dev (clean release)..."
-    if [[ ! -x "${XVECTOR_DIR}/scripts/build.sh" ]]; then
-        log_error "build.sh not found: ${XVECTOR_DIR}/scripts/build.sh"
-        exit 1
-    fi
-    if ! "${XVECTOR_DIR}/scripts/build.sh" --clean --release; then
-        log_error "xvector-dev build failed"
-        exit 1
-    fi
-}
-
-package_xvector() {
+package_deb() {
     read_version "${XVECTOR_VERSION_FILE}"
-    local version="${_VERSION}"
-    local build_dir="${XVECTOR_DIR}/build/Release"
-    local deb_name="libxvector-dev_${version}_amd64.deb"
+    local xvector_version="${_VERSION}"
+    read_version "${XCOMPUTE_VERSION_FILE}"
+    local xcompute_version="${_VERSION}"
 
     local git_hash
     git_hash=$(get_git_hash "${XVECTOR_DIR}")
-    check_manifest_conflict "xvector" "${version}" "${git_hash}"
+    check_manifest_conflict "xvector" "${xvector_version}" "${git_hash}"
+    check_manifest_conflict "xcompute" "${xcompute_version}" "${git_hash}"
 
-    if [[ ! -d "${build_dir}" ]]; then
-        log_error "Build directory not found: ${build_dir}"
+    log_info "Creating Debian packages..."
+    if ! "${XVECTOR_SH}" release deb --output "${PACKAGES_DIR}"; then
+        log_error "Debian package creation failed"
         exit 1
     fi
 
-    log_info "Packaging ${deb_name}..."
-
-    (
-        cd "${build_dir}" || exit 1
-
-        if ! cpack -G DEB \
-            -D CPACK_COMPONENTS_ALL=xvector \
-            -D CPACK_PACKAGING_INSTALL_PREFIX=/opt/xvector \
-            -D CPACK_DEBIAN_XVECTOR_FILE_NAME="${deb_name}"; then
-            log_error "Failed to generate libxvector-dev package"
-            exit 1
-        fi
-
-        mv "${deb_name}" "${PACKAGES_DIR}/"
-    )
-
-    if [[ $? -ne 0 ]]; then
-        exit 1
-    fi
-
-    log_info "Created: ${deb_name}"
-    record_manifest "xvector" "${version}" "${git_hash}" "${deb_name}"
+    local xvector_deb="libxvector-dev_${xvector_version}_amd64.deb"
+    local xcompute_deb="libxcompute-dev_${xcompute_version}_amd64.deb"
+    record_manifest "xvector" "${xvector_version}" "${git_hash}" "${xvector_deb}"
+    record_manifest "xcompute" "${xcompute_version}" "${git_hash}" "${xcompute_deb}"
 }
 
-package_xcompute() {
+package_examples() {
     read_version "${XCOMPUTE_VERSION_FILE}"
     local version="${_VERSION}"
-    local build_dir="${XVECTOR_DIR}/build/Release"
-    local deb_name="libxcompute-dev_${version}_amd64.deb"
 
     local git_hash
     git_hash=$(get_git_hash "${XVECTOR_DIR}")
-    check_manifest_conflict "xcompute" "${version}" "${git_hash}"
 
-    if [[ ! -d "${build_dir}" ]]; then
-        log_error "Build directory not found: ${build_dir}"
+    local tarball_name="xcompute-examples-${version}.tar.gz"
+    check_manifest_conflict "xcompute-examples" "${version}" "${git_hash}"
+
+    log_info "Creating xcompute examples tarball..."
+    if ! "${XVECTOR_SH}" release examples --output "${PACKAGES_DIR}"; then
+        log_error "Examples tarball creation failed"
         exit 1
     fi
 
-    log_info "Packaging ${deb_name}..."
-
-    (
-        cd "${build_dir}" || exit 1
-
-        if ! cpack -G DEB \
-            -D CPACK_COMPONENTS_ALL=xcompute \
-            -D CPACK_PACKAGING_INSTALL_PREFIX=/opt/xcompute \
-            -D CPACK_PACKAGE_VERSION="${version}" \
-            -D CPACK_DEBIAN_XCOMPUTE_FILE_NAME="${deb_name}"; then
-            log_error "Failed to generate libxcompute-dev package"
-            exit 1
-        fi
-
-        mv "${deb_name}" "${PACKAGES_DIR}/"
-    )
-
-    if [[ $? -ne 0 ]]; then
-        exit 1
-    fi
-
-    log_info "Created: ${deb_name}"
-    record_manifest "xcompute" "${version}" "${git_hash}" "${deb_name}"
+    record_manifest "xcompute-examples" "${version}" "${git_hash}" "${tarball_name}"
 }
 
 package_xfaiss() {
@@ -413,12 +486,7 @@ tag_target() {
 
 build_docs_xvector_dev() {
     log_info "Building documentation (MkDocs + Doxygen)..."
-    local xvector_sh="${XVECTOR_DIR}/scripts/xvector.sh"
-    if [[ ! -x "${xvector_sh}" ]]; then
-        log_error "xvector.sh not found: ${xvector_sh}"
-        exit 1
-    fi
-    if ! "${xvector_sh}" docs build; then
+    if ! "${XVECTOR_SH}" docs build; then
         log_error "Documentation build failed"
         exit 1
     fi
@@ -483,7 +551,7 @@ Commands:
 
 Targets:
   xvector    libxvector-dev .deb package / API docs
-  xcompute   libxcompute-dev .deb package / API docs
+  xcompute   libxcompute-dev .deb package / examples / API docs
   xfaiss     xfaiss source tarball
   all        All targets (default)
 
@@ -513,9 +581,9 @@ main() {
     shift
 
     case "${command}" in
-        show)    verify_deploy_branches; cmd_show "$@" ;;
-        package) verify_deploy_branches; cmd_package "$@" ;;
-        tag)     verify_deploy_branches; cmd_tag "$@" ;;
+        show)    verify_submodule_commits; cmd_show "$@" ;;
+        package) verify_submodule_commits; cmd_package "$@" ;;
+        tag)     verify_submodule_commits; cmd_tag "$@" ;;
         -h|--help) usage; exit 0 ;;
         *)
             log_error "Unknown command: ${command}"
