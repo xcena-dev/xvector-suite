@@ -837,10 +837,9 @@ cmd_publish() {
 
     log_info "Deploying documentation to gh-pages..."
 
-    # Work in a temporary clone to avoid touching the working tree
+    # Work in a temporary directory to avoid touching the working tree
     local tmp_dir
     tmp_dir=$(mktemp -d)
-    trap 'rm -rf "${tmp_dir}"' EXIT
 
     # Copy site contents first (before any git ops in tmp)
     cp -r "${site_dir}/." "${tmp_dir}/site"
@@ -863,6 +862,9 @@ cmd_publish() {
     # Force-push to gh-pages (replaces entire branch — always fresh)
     log_info "Force-pushing to origin/gh-pages..."
     git -C "${tmp_dir}" push --force origin gh-pages
+
+    # Clean up
+    rm -rf "${tmp_dir}"
 
     log_info "Documentation deployed to gh-pages."
     log_info "Contents:"
