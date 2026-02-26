@@ -35,11 +35,10 @@ Version is managed directly in each submodule's VERSION file.
 ./package.sh show xvector      # Show xvector version only
 ```
 
-Example output:
-```
-xvector    0.1.0
-xcompute   0.1.0
-xfaiss     0.1.0 (upstream=faiss-1.13.0)
+### Sync Submodules
+
+```bash
+./package.sh sync              # Fetch latest and commit submodule references
 ```
 
 ### Build Packages
@@ -52,28 +51,60 @@ xfaiss     0.1.0 (upstream=faiss-1.13.0)
 ```
 
 When packaging runs:
-1. xvector/xcompute: Builds via `xvector-dev/scripts/build.sh --clean --release`, then generates .deb with cpack
+1. xvector/xcompute: Builds via `xvector.sh build --clean --release`, then generates .deb with cpack
 2. xfaiss: Generates source tarball via `git archive` (`.gitattributes` export-ignore applied)
-3. Build is recorded in `packages/manifest.json` (version + git hash)
 
-Generated artifacts:
-```
-packages/
-  libxvector-dev_0.1.0_amd64.deb
-  libxcompute-dev_0.1.0_amd64.deb
-  xfaiss-0.1.0+faiss1.13.0-source.tar.gz
+### Bump Version
+
+```bash
+./package.sh bump xvector patch   # 0.1.0 -> 0.1.1
+./package.sh bump xcompute minor  # 0.1.0 -> 0.2.0
+./package.sh bump xfaiss minor    # 0.1.0 -> 0.2.0 (preserves upstream= line)
 ```
 
-### Git Tag
+### Git Tag & Release
 
 ```bash
 ./package.sh tag                   # Tag all
-./package.sh tag xvector           # Tag xvector only
+./package.sh tag xvector           # Tag xvector + xcompute (always together)
+./package.sh tag xfaiss            # Tag xfaiss only
 ```
 
-Tag format: `{target}-v{version}` (e.g., `xvector-v0.1.0`, `xfaiss-v0.1.0`)
+The tag command performs the following steps:
 
-Tag creation is rejected if there are uncommitted changes.
+1. Verifies no uncommitted changes and build artifacts exist
+2. Copies artifacts to `packages/build-YYYYMMDD-<hash>/` with `manifest.json`
+3. Creates submodule tags:
+   - xvector/xcompute are always tagged together (same repo, same commit)
+   - xfaiss is tagged independently
+4. Commits `releases/manifest-<epoch>.json` to repo for history tracking
+5. Tags xvector-suite with `release-<epoch>`
+6. Pushes tag and creates a GitHub Release with all artifacts
+
+Tag formats:
+
+| Scope | Tag Format | Repository |
+|-------|-----------|------------|
+| xvector | `xvector-v{version}` | xvector-dev |
+| xcompute | `xcompute-v{version}` | xvector-dev |
+| xfaiss | `xfaiss-v{version}` | xfaiss |
+| suite | `release-{epoch}` | xvector-suite |
+
+### Interactive Mode
+
+```bash
+./package.sh                       # Launch interactive menu
+```
+
+## Release History
+
+Release manifests are tracked in `releases/manifest-<epoch>.json`.
+Each manifest records the date, versions, git hashes, and artifact list.
+
+To delete a published GitHub Release:
+```bash
+gh release delete <tag-name> --yes --cleanup-tag
+```
 
 ## Build Dependencies
 
@@ -83,3 +114,5 @@ The following are required for xvector/xcompute packaging:
 - Parallel Xceleration Library (PXL)
 - mu_std (`/usr/local/mu_library/mu`)
 - dpkg-dev (cpack DEB generator)
+- jq
+- gh (GitHub CLI, for release upload)
