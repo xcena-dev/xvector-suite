@@ -26,13 +26,13 @@ Version is managed directly in each submodule's VERSION file.
 | xcompute | `xvector-dev/VERSION_XCOMPUTE` | libxcompute-dev .deb package |
 | xfaiss | `xfaiss/VERSION` | xfaiss source tarball |
 
-## deploy.sh
+## package.sh
 
 ### Check Version
 
 ```bash
-./deploy.sh show              # Show all versions
-./deploy.sh show xvector      # Show xvector version only
+./package.sh show              # Show all versions
+./package.sh show xvector      # Show xvector version only
 ```
 
 Example output:
@@ -42,13 +42,13 @@ xcompute   0.1.0
 xfaiss     0.1.0 (upstream=faiss-1.13.0)
 ```
 
-### Packaging
+### Build Packages
 
 ```bash
-./deploy.sh package               # Package all
-./deploy.sh package xvector       # Generate libxvector-dev .deb only
-./deploy.sh package xcompute      # Generate libxcompute-dev .deb only
-./deploy.sh package xfaiss        # Generate xfaiss source tarball only
+./package.sh build                # Package all
+./package.sh build xvector        # Generate libxvector-dev .deb only
+./package.sh build xcompute       # Generate libxcompute-dev .deb only
+./package.sh build xfaiss         # Generate xfaiss source tarball only
 ```
 
 When packaging runs:
@@ -67,8 +67,8 @@ packages/
 ### Git Tag
 
 ```bash
-./deploy.sh tag                   # Tag all
-./deploy.sh tag xvector           # Tag xvector only
+./package.sh tag                   # Tag all
+./package.sh tag xvector           # Tag xvector only
 ```
 
 Tag format: `{target}-v{version}` (e.g., `xvector-v0.1.0`, `xfaiss-v0.1.0`)
