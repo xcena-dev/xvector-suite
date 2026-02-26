@@ -630,6 +630,10 @@ docs_xcompute() {
 cmd_sync() {
     local changed=0
 
+    # Ensure submodules are initialized and checked out
+    log_info "Initializing submodules..."
+    git -C "${SUITE_ROOT}" submodule update --init
+
     # xvector-dev
     log_info "Fetching xvector-dev origin/${XVECTOR_DEFAULT_BRANCH}..."
     git -C "${XVECTOR_DIR}" fetch origin "${XVECTOR_DEFAULT_BRANCH}"
