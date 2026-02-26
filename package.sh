@@ -125,7 +125,9 @@ verify_submodule_commits() {
         exit 1
     fi
 
-    log_info "Submodule commits verified (xvector-dev=${actual_xvector:0:7}, xfaiss=${actual_xfaiss:0:7})"
+    log_info "Submodule commits verified"
+    log_info "  xvector-dev = ${actual_xvector}"
+    log_info "  xfaiss      = ${actual_xfaiss}"
 }
 
 
@@ -469,18 +471,28 @@ cmd_tag() {
     log_info "Manifest written: ${manifest}"
 
     # Create git tags
-    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
+    # xvector and xcompute are always tagged together (same repo, same commit)
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
         tag_target "xvector"
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
         tag_target "xcompute"
     fi
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         tag_target "xfaiss"
     fi
 
+    # Tag xvector-suite itself
+    local epoch
+    epoch=$(date +%s)
+    local suite_tag="release-${epoch}"
+    git -C "${SUITE_ROOT}" tag -a "${suite_tag}" -m "Release ${date_str} (xvector=${xv_ver}, xcompute=${xc_ver}, xfaiss=${xf_ver})"
+    log_info "Created tag: ${suite_tag} in xvector-suite"
+
     echo ""
     log_info "Release: ${release_name}"
+    log_info "  suite         = $(git -C "${SUITE_ROOT}" rev-parse HEAD)"
+    log_info "  xvector-dev   = ${xv_hash}"
+    log_info "  xfaiss        = ${xf_hash}"
+    echo ""
     ls -lh "${release_dir}/"
 }
 
@@ -741,18 +753,16 @@ interactive_tag() {
     echo ""
     echo "  Target:"
     echo "    1) all"
-    echo "    2) xvector"
-    echo "    3) xcompute"
-    echo "    4) xfaiss"
+    echo "    2) xvector + xcompute  (always tagged together)"
+    echo "    3) xfaiss"
     echo ""
     local choice
-    read -rp "  Select target [1-4]: " choice
+    read -rp "  Select target [1-3]: " choice
     local target
     case "${choice}" in
         1) target="all" ;;
         2) target="xvector" ;;
-        3) target="xcompute" ;;
-        4) target="xfaiss" ;;
+        3) target="xfaiss" ;;
         *) log_error "Invalid target"; exit 1 ;;
     esac
 
