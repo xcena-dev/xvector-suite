@@ -278,6 +278,8 @@ cmd_package() {
     local target="${1:-all}"
     validate_target "${target}"
 
+    # Always start clean
+    cmd_clean
     mkdir -p "${BUILD_DIR}"
 
     if [[ ! -x "${XVECTOR_SH}" ]]; then
@@ -299,7 +301,7 @@ cmd_package() {
         steps+=("Create xfaiss source archive");           step_funcs+=("package_xfaiss")
     fi
     if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
-        steps+=("Build documentation (MkDocs + Doxygen)"); step_funcs+=("build_docs_xvector_dev")
+        steps+=("Build documentation (Jekyll + Doxygen)"); step_funcs+=("build_docs_xvector_dev")
     fi
     if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
         steps+=("Package xvector documentation");          step_funcs+=("docs_xvector")
@@ -607,7 +609,7 @@ build_docs_xvector_dev() {
         fi
     fi
 
-    log_info "Building documentation (MkDocs + Doxygen)..."
+    log_info "Building documentation (Jekyll + Doxygen)..."
     if ! "${XVECTOR_SH}" docs build; then
         log_error "Documentation build failed"
         exit 1
@@ -617,7 +619,7 @@ build_docs_xvector_dev() {
 docs_xvector() {
     read_version "${XVECTOR_VERSION_FILE}"
     local version="${_VERSION}"
-    local site_dir="${XVECTOR_DIR}/build/site/xvector"
+    local site_dir="${XVECTOR_DIR}/build/site/xvector-suite/xvector"
     local tarball_name="xvector-docs_${version}.tar.gz"
 
     if [[ ! -d "${site_dir}" ]]; then
@@ -626,14 +628,14 @@ docs_xvector() {
     fi
 
     log_info "Packaging xvector ${version} documentation..."
-    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site" "xvector"
+    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site/xvector-suite" "xvector"
     log_info "Created: ${tarball_name}"
 }
 
 docs_xcompute() {
     read_version "${XCOMPUTE_VERSION_FILE}"
     local version="${_VERSION}"
-    local site_dir="${XVECTOR_DIR}/build/site/xcompute"
+    local site_dir="${XVECTOR_DIR}/build/site/xvector-suite/xcompute"
     local tarball_name="xcompute-docs_${version}.tar.gz"
 
     if [[ ! -d "${site_dir}" ]]; then
@@ -642,7 +644,7 @@ docs_xcompute() {
     fi
 
     log_info "Packaging xcompute ${version} documentation..."
-    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site" "xcompute"
+    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site/xvector-suite" "xcompute"
     log_info "Created: ${tarball_name}"
 }
 
@@ -761,8 +763,8 @@ cmd_dist() {
     fi
 
     # Validate setup.sh
-    if [[ ! -f "${SUITE_ROOT}/setup.sh" ]]; then
-        log_error "setup.sh not found at ${SUITE_ROOT}/setup.sh"
+    if [[ ! -f "${SUITE_ROOT}/packaging/setup.sh" ]]; then
+        log_error "setup.sh not found at ${SUITE_ROOT}/packaging/setup.sh"
         exit 1
     fi
 
@@ -781,7 +783,7 @@ cmd_dist() {
     cp "${BUILD_DIR}/${tar_examples}"      "${staging_dir}/"
     cp "${BUILD_DIR}/${tar_xvector_docs}"  "${staging_dir}/"
     cp "${BUILD_DIR}/${tar_xcompute_docs}" "${staging_dir}/"
-    cp "${SUITE_ROOT}/setup.sh"            "${staging_dir}/"
+    cp "${SUITE_ROOT}/packaging/setup.sh"   "${staging_dir}/"
     chmod +x "${staging_dir}/setup.sh"
 
     # Create distribution tarball
@@ -860,7 +862,7 @@ cmd_status() {
 # --- publish (gh-pages) ---
 
 cmd_publish() {
-    local site_dir="${XVECTOR_DIR}/build/site"
+    local site_dir="${XVECTOR_DIR}/build/site/xvector-suite"
 
     if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xcompute" ]]; then
         log_error "Documentation not found in ${site_dir}."
@@ -901,8 +903,8 @@ cmd_publish() {
 
     log_info "Documentation deployed to gh-pages."
     log_info "Contents:"
-    log_info "  /xvector/          MkDocs + Doxygen API reference"
-    log_info "  /xcompute/         MkDocs + Doxygen API reference"
+    log_info "  /xvector/          Jekyll + Doxygen API reference"
+    log_info "  /xcompute/         Jekyll + Doxygen API reference"
 }
 
 # --- Usage ---
