@@ -530,13 +530,14 @@ tag_push_and_release() {
     log_info "Pushing tag ${_SUITE_TAG} to origin..."
     git -C "${SUITE_ROOT}" push origin HEAD "${_SUITE_TAG}"
 
-    # Collect artifact files
-    local release_files=()
-    for f in "${_RELEASE_DIR}"/*; do
-        [[ "$(basename "$f")" == "manifest.json" ]] && continue
-        release_files+=("${f}")
-    done
-    release_files+=("${_RELEASE_DIR}/manifest.json")
+    # Upload only the dist tarball and manifest
+    get_target_version "xvector"
+    local dist_tarball="${_RELEASE_DIR}/xvector-suite-${_VERSION}-dist.tar.gz"
+    if [[ ! -f "${dist_tarball}" ]]; then
+        log_error "Dist tarball not found: ${dist_tarball}"
+        exit 1
+    fi
+    local release_files=("${dist_tarball}" "${_RELEASE_DIR}/manifest.json")
 
     local release_body
     release_body=$(cat <<GHEOF
@@ -587,6 +588,7 @@ cmd_tag() {
     validate_target "${target}"
 
     tag_validate "${target}"
+    cmd_dist
     tag_create_release_dir
     tag_write_manifest
     tag_create_git_tags "${target}"
@@ -740,10 +742,14 @@ cmd_dist() {
     local deb_xvector="libxvector-dev_${xv_ver}_amd64.deb"
     local deb_xcompute="libxcompute-dev_${xc_ver}_amd64.deb"
     local tar_xfaiss="xfaiss-${xf_ver}+faiss${upstream_short}-source.tar.gz"
+    local tar_examples="xcompute-examples-${xc_ver}.tar.gz"
+    local tar_xvector_docs="xvector-docs_${xv_ver}.tar.gz"
+    local tar_xcompute_docs="xcompute-docs_${xc_ver}.tar.gz"
 
     # Validate artifacts
     local missing=0
-    for artifact in "${deb_xvector}" "${deb_xcompute}" "${tar_xfaiss}"; do
+    for artifact in "${deb_xvector}" "${deb_xcompute}" "${tar_xfaiss}" \
+                    "${tar_examples}" "${tar_xvector_docs}" "${tar_xcompute_docs}"; do
         if [[ ! -f "${BUILD_DIR}/${artifact}" ]]; then
             log_error "Missing artifact: ${BUILD_DIR}/${artifact}"
             missing=1
@@ -769,10 +775,13 @@ cmd_dist() {
     mkdir -p "${staging_dir}"
 
     # Copy artifacts and setup.sh into staging directory
-    cp "${BUILD_DIR}/${deb_xvector}"  "${staging_dir}/"
-    cp "${BUILD_DIR}/${deb_xcompute}" "${staging_dir}/"
-    cp "${BUILD_DIR}/${tar_xfaiss}"   "${staging_dir}/"
-    cp "${SUITE_ROOT}/setup.sh"       "${staging_dir}/"
+    cp "${BUILD_DIR}/${deb_xvector}"       "${staging_dir}/"
+    cp "${BUILD_DIR}/${deb_xcompute}"      "${staging_dir}/"
+    cp "${BUILD_DIR}/${tar_xfaiss}"        "${staging_dir}/"
+    cp "${BUILD_DIR}/${tar_examples}"      "${staging_dir}/"
+    cp "${BUILD_DIR}/${tar_xvector_docs}"  "${staging_dir}/"
+    cp "${BUILD_DIR}/${tar_xcompute_docs}" "${staging_dir}/"
+    cp "${SUITE_ROOT}/setup.sh"            "${staging_dir}/"
     chmod +x "${staging_dir}/setup.sh"
 
     # Create distribution tarball
