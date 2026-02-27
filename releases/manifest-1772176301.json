@@ -1,0 +1,25 @@
+{
+  "date": "20260227",
+  "suite_commit": "4c2799a60c42fc5de6c112674a7d8b202edb8dc5",
+  "xvector": {
+    "version": "0.1.0",
+    "git_hash": "1f15f91e8177af60162fc6759fe0abd37176608b"
+  },
+  "xcompute": {
+    "version": "0.1.0",
+    "git_hash": "1f15f91e8177af60162fc6759fe0abd37176608b"
+  },
+  "xfaiss": {
+    "version": "0.1.0",
+    "git_hash": "4950dc80aae1acfbb7325a23cde07877c1a68095"
+  },
+  "artifacts": [
+    "libxcompute-dev_0.1.0_amd64.deb",
+    "libxvector-dev_0.1.0_amd64.deb",
+    "xcompute-docs_0.1.0.tar.gz",
+    "xcompute-examples-0.1.0.tar.gz",
+    "xfaiss-0.1.0+faiss1.13.0-source.tar.gz",
+    "xvector-docs_0.1.0.tar.gz",
+    "xvector-suite-0.1.0-dist.tar.gz"
+  ]
+}
