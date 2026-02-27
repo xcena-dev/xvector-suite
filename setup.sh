@@ -9,10 +9,10 @@ log_info()  { echo -e "\033[0;32m[INFO]\033[0m  $*"; }
 log_error() { echo -e "\033[0;31m[ERROR]\033[0m $*" >&2; }
 log_warn()  { echo -e "\033[0;33m[WARN]\033[0m  $*"; }
 
-# --- Root check ---
+# --- Sudo helper ---
+SUDO=""
 if [[ $EUID -ne 0 ]]; then
-    log_error "This script must be run as root (use sudo)."
-    exit 1
+    SUDO="sudo"
 fi
 
 # --- Find artifacts ---
@@ -43,20 +43,20 @@ log_info "Found xfaiss source:   $(basename "${XFAISS_SRC}")"
 
 # --- Install debs ---
 log_info "Installing $(basename "${DEB_XCOMPUTE}") ..."
-if ! dpkg -i "${DEB_XCOMPUTE}"; then
+if ! ${SUDO} dpkg -i "${DEB_XCOMPUTE}"; then
     log_error "Failed to install $(basename "${DEB_XCOMPUTE}")"
     exit 1
 fi
 
 log_info "Installing $(basename "${DEB_XVECTOR}") ..."
-if ! dpkg -i "${DEB_XVECTOR}"; then
+if ! ${SUDO} dpkg -i "${DEB_XVECTOR}"; then
     log_error "Failed to install $(basename "${DEB_XVECTOR}")"
     exit 1
 fi
 
 # --- Extract xfaiss source ---
 log_info "Extracting $(basename "${XFAISS_SRC}") into $(pwd) ..."
-if ! tar -xzf "${XFAISS_SRC}"; then
+if ! tar --no-same-owner -xzf "${XFAISS_SRC}"; then
     log_error "Failed to extract $(basename "${XFAISS_SRC}")"
     exit 1
 fi
