@@ -724,6 +724,67 @@ cmd_clean() {
     fi
 }
 
+# --- dist ---
+
+cmd_dist() {
+    read_version "${XVECTOR_VERSION_FILE}"
+    local xv_ver="${_VERSION}"
+
+    read_version "${XCOMPUTE_VERSION_FILE}"
+    local xc_ver="${_VERSION}"
+
+    read_xfaiss_version "${XFAISS_VERSION_FILE}"
+    local xf_ver="${_VERSION}"
+    local upstream_short="${_UPSTREAM#faiss-}"
+
+    local deb_xvector="libxvector-dev_${xv_ver}_amd64.deb"
+    local deb_xcompute="libxcompute-dev_${xc_ver}_amd64.deb"
+    local tar_xfaiss="xfaiss-${xf_ver}+faiss${upstream_short}-source.tar.gz"
+
+    # Validate artifacts
+    local missing=0
+    for artifact in "${deb_xvector}" "${deb_xcompute}" "${tar_xfaiss}"; do
+        if [[ ! -f "${BUILD_DIR}/${artifact}" ]]; then
+            log_error "Missing artifact: ${BUILD_DIR}/${artifact}"
+            missing=1
+        fi
+    done
+    if [[ ${missing} -ne 0 ]]; then
+        log_error "Run 'build' first to produce all artifacts."
+        exit 1
+    fi
+
+    # Validate setup.sh
+    if [[ ! -f "${SUITE_ROOT}/setup.sh" ]]; then
+        log_error "setup.sh not found at ${SUITE_ROOT}/setup.sh"
+        exit 1
+    fi
+
+    local suite_name="xvector-suite-${xv_ver}"
+    local tarball_name="${suite_name}-dist.tar.gz"
+
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    local staging_dir="${temp_dir}/${suite_name}"
+    mkdir -p "${staging_dir}"
+
+    # Copy artifacts and setup.sh into staging directory
+    cp "${BUILD_DIR}/${deb_xvector}"  "${staging_dir}/"
+    cp "${BUILD_DIR}/${deb_xcompute}" "${staging_dir}/"
+    cp "${BUILD_DIR}/${tar_xfaiss}"   "${staging_dir}/"
+    cp "${SUITE_ROOT}/setup.sh"       "${staging_dir}/"
+    chmod +x "${staging_dir}/setup.sh"
+
+    # Create distribution tarball
+    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${temp_dir}" "${suite_name}"
+    rm -rf "${temp_dir}"
+
+    local tarball_path="${BUILD_DIR}/${tarball_name}"
+    local tarball_size
+    tarball_size=$(du -sh "${tarball_path}" | cut -f1)
+    log_info "Created: ${tarball_path} (${tarball_size})"
+}
+
 # --- status ---
 
 cmd_status() {
@@ -855,6 +916,7 @@ Commands:
   tag [target]       Create git tags and finalize release to packages/build-YYYYMMDD-<hash>/
   publish            Publish documentation to gh-pages (always fresh, no stale files)
   clean              Remove build artifacts (packages/build/)
+  dist               Bundle artifacts + setup.sh into a distribution tarball
 
 Targets:
   xvector    libxvector-dev .deb package / API docs
@@ -891,13 +953,14 @@ interactive_menu() {
     echo "  6) tag      Create git tags & GitHub Release"
     echo "  7) publish  Publish docs to gh-pages"
     echo "  8) clean    Remove build artifacts"
+    echo "  9) dist     Bundle artifacts + setup.sh into distribution tarball"
     echo ""
     echo "  h) help     Show full usage"
     echo "  q) quit"
     echo ""
 
     local choice
-    read -rp "  Select [1-8, h, q]: " choice
+    read -rp "  Select [1-9, h, q]: " choice
 
     case "${choice}" in
         1) cmd_status ;;
@@ -908,6 +971,7 @@ interactive_menu() {
         6) verify_submodule_commits; interactive_tag ;;
         7) cmd_publish ;;
         8) cmd_clean ;;
+        9) cmd_dist ;;
         h) usage ;;
         q) exit 0 ;;
         *) log_error "Invalid choice: ${choice}"; exit 1 ;;
@@ -1003,6 +1067,7 @@ main() {
         sync)    cmd_sync "$@" ;;
         publish) cmd_publish "$@" ;;
         clean)   cmd_clean "$@" ;;
+        dist)    cmd_dist "$@" ;;
         -h|--help) usage; exit 0 ;;
         *)
             log_error "Unknown command: ${command}"
