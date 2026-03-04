@@ -9,6 +9,7 @@ DIST_DIR="${SUITE_ROOT}/dist"
 BUILD_DIR="${DIST_DIR}/build"
 XVECTOR_SH="${XVECTOR_DIR}/scripts/xvector.sh"
 PACKAGING_SH="${XVECTOR_DIR}/scripts/packaging.sh"
+DOCS_SH="${XVECTOR_DIR}/scripts/docs.sh"
 
 # VERSION file paths
 XVECTOR_VERSION_FILE="${XVECTOR_DIR}/VERSION"
@@ -254,6 +255,14 @@ _pkg_build_xvector() {
     fi
 }
 
+_pkg_build_docs() {
+    # docs.sh must run AFTER xvector.sh build --clean, which wipes build/site/
+    if ! "${DOCS_SH}" build; then
+        log_error "Documentation build failed"
+        exit 1
+    fi
+}
+
 cmd_build() {
     local target="${1:-all}"
     validate_target "${target}"
@@ -272,6 +281,7 @@ cmd_build() {
 
     if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
         steps+=("Build xvector-dev (clean release)");      step_funcs+=("_pkg_build_xvector")
+        steps+=("Build documentation (Jekyll + Doxygen)"); step_funcs+=("_pkg_build_docs")
         steps+=("Create Debian packages");                 step_funcs+=("package_deb")
     fi
     if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
@@ -480,7 +490,7 @@ tag_create_git_tags() {
 }
 
 tag_commit_manifest() {
-    local manifests_dir="${SUITE_ROOT}/releases"
+    local manifests_dir="${SUITE_ROOT}/manifests"
     local epoch date_str
     epoch=$(date +%s)
     date_str=$(date +%Y%m%d)
@@ -572,6 +582,12 @@ cmd_release() {
     tag_create_git_tags "${target}"
     tag_commit_manifest
     tag_push_and_release
+
+    # Rebuild docs now that the release tag and GitHub Release exist,
+    # so download links in Getting Started point to the correct release.
+    log_info "Rebuilding documentation with new release tag..."
+    _pkg_build_docs
+    cmd_publish
 }
 
 # --- sync ---
@@ -787,7 +803,7 @@ cmd_publish() {
 
     if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xcompute" ]]; then
         log_error "Documentation not found in ${site_dir}."
-        log_error "Run './package.sh build' first to generate docs."
+        log_error "Run './package.sh build' first (includes docs build)."
         exit 1
     fi
 
