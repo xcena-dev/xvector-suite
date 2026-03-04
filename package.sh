@@ -263,6 +263,42 @@ _pkg_build_docs() {
     fi
 }
 
+cmd_docs_build() {
+    local release_tag="${1:-}"
+
+    if [[ -z "${release_tag}" ]]; then
+        # Auto-detect: use the latest release-* tag from the suite repo
+        release_tag=$(git -C "${SUITE_ROOT}" tag --sort=-creatordate 2>/dev/null | grep '^release-' | head -1)
+        release_tag="${release_tag:-release-latest}"
+        log_info "Auto-detected release tag: ${release_tag}"
+    fi
+
+    get_target_version "xvector";  local xv_ver="${_VERSION}"
+    get_target_version "xcompute"; local xc_ver="${_VERSION}"
+
+    local download_url="https://github.com/metisx-dev/xvector-suite/releases/download/${release_tag}/xvector-suite-${xv_ver}-dist.tar.gz"
+    log_info "Docs download URL: ${download_url}"
+
+    # Generate a version overlay that includes the release tag
+    local overlay
+    overlay=$(mktemp --suffix=.yml)
+    cat > "${overlay}" <<EOF
+xvector_version: "${xv_ver}"
+xcompute_version: "${xc_ver}"
+release_tag: "${release_tag}"
+EOF
+
+    log_info "Building documentation with release_tag=${release_tag}..."
+
+    # Pass the overlay as an extra Jekyll config via DOCS_VERSION_OVERLAY env var
+    export DOCS_VERSION_OVERLAY="${overlay}"
+    _pkg_build_docs
+    unset DOCS_VERSION_OVERLAY
+    rm -f "${overlay}"
+
+    log_info "Documentation built with release_tag=${release_tag}"
+}
+
 cmd_build() {
     local target="${1:-all}"
     validate_target "${target}"
@@ -281,7 +317,6 @@ cmd_build() {
 
     if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
         steps+=("Build xvector-dev (clean release)");      step_funcs+=("_pkg_build_xvector")
-        steps+=("Build documentation (Jekyll + Doxygen)"); step_funcs+=("_pkg_build_docs")
         steps+=("Create Debian packages");                 step_funcs+=("package_deb")
     fi
     if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
@@ -571,23 +606,82 @@ tag_target() {
     log_info "Created tag: ${tag_name} in $(basename "${repo_dir}")"
 }
 
+confirm_prompt() {
+    local msg="$1"
+    local answer
+    echo ""
+    read -rp "  ${msg} [y/N]: " answer
+    case "${answer}" in
+        [yY]|[yY][eE][sS]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 cmd_release() {
     local target="${1:-all}"
     validate_target "${target}"
 
-    tag_validate "${target}"
-    cmd_build "all"
+    # Check for uncommitted changes before starting
+    if ! git -C "${SUITE_ROOT}" diff --quiet HEAD 2>/dev/null; then
+        log_error "Uncommitted changes in xvector-suite. Please commit first."
+        exit 1
+    fi
+
+    # Verify build artifacts exist (build must be done beforehand)
+    if [[ ! -d "${BUILD_DIR}" ]] || [[ -z "$(ls -A "${BUILD_DIR}" 2>/dev/null)" ]]; then
+        log_error "No build artifacts found in ${BUILD_DIR}/."
+        log_error "Run './package.sh build' first before releasing."
+        exit 1
+    fi
+
+    tag_verify_artifact_versions "${target}"
+    log_info "Build artifacts verified."
+
+    # Prepare release directory and manifest
     tag_create_release_dir
     tag_write_manifest
+
+    # Show release summary
+    echo ""
+    log_info "Release: ${_RELEASE_NAME}"
+    log_info "  xvector  = v${_TAG_XV_VER}  (${_TAG_XV_HASH:0:12})"
+    log_info "  xcompute = v${_TAG_XC_VER}  (${_TAG_XV_HASH:0:12})"
+    log_info "  xfaiss   = v${_TAG_XF_VER}  (${_TAG_XF_HASH:0:12})"
+    echo ""
+    ls -lh "${_RELEASE_DIR}/"
+
+    # Step 1: Create git tags (requires confirmation)
+    if ! confirm_prompt "Create git tags for ${target}?"; then
+        log_warn "Tagging skipped. Release directory preserved at ${_RELEASE_DIR}/"
+        return 0
+    fi
     tag_create_git_tags "${target}"
+
+    # Step 2: Commit manifest and create suite tag (requires confirmation)
+    if ! confirm_prompt "Commit manifest and create suite tag?"; then
+        log_warn "Manifest commit skipped. Component tags were already created."
+        return 0
+    fi
     tag_commit_manifest
+
+    # Step 3: Build documentation with the release tag
+    log_info "Building documentation with release tag: ${_SUITE_TAG}"
+    cmd_docs_build "${_SUITE_TAG}"
+
+    # Step 4: Push and create GitHub Release (requires confirmation)
+    if ! confirm_prompt "Push tag '${_SUITE_TAG}' and create GitHub Release?"; then
+        log_warn "Push skipped. Tags and manifest committed locally."
+        log_warn "You can push manually with:"
+        log_warn "  git push origin HEAD ${_SUITE_TAG}"
+        return 0
+    fi
     tag_push_and_release
 
-    # Rebuild docs now that the release tag and GitHub Release exist,
-    # so download links in Getting Started point to the correct release.
-    log_info "Rebuilding documentation with new release tag..."
-    _pkg_build_docs
-    cmd_publish
+    echo ""
+    log_info "Release complete."
+    log_info "Preview docs before publishing:"
+    log_info "  ./package.sh docs-preview   # preview at localhost:8000"
+    log_info "  ./package.sh docs-publish   # deploy to gh-pages"
 }
 
 # --- sync ---
@@ -601,7 +695,10 @@ cmd_sync() {
 
     # xvector-dev
     log_info "Fetching xvector-dev origin/${XVECTOR_DEFAULT_BRANCH}..."
-    git -C "${XVECTOR_DIR}" fetch origin "${XVECTOR_DEFAULT_BRANCH}"
+    if ! git -C "${XVECTOR_DIR}" fetch origin "${XVECTOR_DEFAULT_BRANCH}"; then
+        log_error "Failed to fetch xvector-dev. Check your SSH keys / network."
+        exit 1
+    fi
 
     local xv_before xv_after
     xv_before=$(git -C "${XVECTOR_DIR}" rev-parse HEAD)
@@ -619,7 +716,10 @@ cmd_sync() {
 
     # xfaiss
     log_info "Fetching xfaiss origin/${XFAISS_DEFAULT_BRANCH}..."
-    git -C "${XFAISS_DIR}" fetch origin "${XFAISS_DEFAULT_BRANCH}"
+    if ! git -C "${XFAISS_DIR}" fetch origin "${XFAISS_DEFAULT_BRANCH}"; then
+        log_error "Failed to fetch xfaiss. Check your SSH keys / network."
+        exit 1
+    fi
 
     local xf_before xf_after
     xf_before=$(git -C "${XFAISS_DIR}" rev-parse HEAD)
@@ -796,9 +896,24 @@ cmd_status() {
     echo ""
 }
 
+# --- docs (local preview) ---
+
+cmd_docs_preview() {
+    local site_dir="${XVECTOR_DIR}/build/site/xvector-suite"
+
+    if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xcompute" ]]; then
+        log_error "Documentation not found in ${site_dir}."
+        log_error "Run './package.sh build' first (includes docs build)."
+        exit 1
+    fi
+
+    log_info "Starting docs preview server..."
+    "${DOCS_SH}" serve "$@"
+}
+
 # --- publish (gh-pages) ---
 
-cmd_publish() {
+cmd_docs_publish() {
     local site_dir="${XVECTOR_DIR}/build/site/xvector-suite"
 
     if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xcompute" ]]; then
@@ -857,11 +972,14 @@ Commands:
   status             Show repo state, versions, build artifacts
   sync               Fetch latest submodule commits and commit references
   build [target]     Build artifacts + dist tarball into dist/build/
+  docs-build [tag]   Build documentation with release-specific download paths
+                     If tag is omitted, auto-detects latest release-* tag
+  docs-preview       Preview built documentation locally (localhost:8000)
   bump <target> <type>
                      Bump version (major, minor, patch)
                      Targets: xvector, xcompute, xfaiss
-  release [target]   Build + tag + GitHub Release
-  publish            Publish documentation to gh-pages
+  release [target]   Tag + GitHub Release (requires prior build)
+  docs-publish       Publish documentation to gh-pages
   clean              Remove build artifacts (dist/build/)
 
 Targets:
@@ -878,7 +996,9 @@ Examples:
     $(basename "$0") bump xvector patch   # 0.1.0 -> 0.1.1
     $(basename "$0") bump xfaiss minor    # 0.1.0 -> 0.2.0 (preserves upstream= line)
     $(basename "$0") sync                 # Update submodules to latest remote
-    $(basename "$0") publish              # Publish docs to gh-pages
+    $(basename "$0") docs-build              # Build docs (auto-detect latest tag)
+    $(basename "$0") docs-build release-1709512345  # Build docs with specific tag
+    $(basename "$0") docs-publish          # Publish docs to gh-pages
     $(basename "$0") clean                # Remove build artifacts
 EOF
 }
@@ -893,15 +1013,17 @@ interactive_menu() {
     echo "  2) sync      Fetch & update submodules"
     echo "  3) build     Build all artifacts + dist tarball"
     echo "  4) bump      Bump a version"
-    echo "  5) release   Build + tag + GitHub Release"
-    echo "  6) publish   Publish docs to gh-pages"
+    echo "  5) release   Tag + GitHub Release (requires prior build)"
+    echo "  6) docs-build     Build documentation with release download paths"
+    echo "  7) docs-publish   Publish docs to gh-pages"
+    echo "  8) docs-preview   Preview built documentation locally"
     echo ""
     echo "  c) clean     Remove build artifacts"
     echo "  h) help      q) quit"
     echo ""
 
     local choice
-    read -rp "  Select [1-6, c, h, q]: " choice
+    read -rp "  Select [1-8, c, h, q]: " choice
 
     case "${choice}" in
         1) cmd_status ;;
@@ -909,7 +1031,9 @@ interactive_menu() {
         3) interactive_build ;;
         4) interactive_bump ;;
         5) verify_submodule_commits; interactive_release ;;
-        6) cmd_publish ;;
+        6) cmd_docs_build ;;
+        7) cmd_docs_publish ;;
+        8) cmd_docs_preview ;;
         c) cmd_clean ;;
         h) usage ;;
         q) exit 0 ;;
@@ -976,6 +1100,12 @@ interactive_release() {
         *) log_error "Invalid target"; exit 1 ;;
     esac
 
+    # Ensure build is done before release
+    if [[ ! -d "${BUILD_DIR}" ]] || [[ -z "$(ls -A "${BUILD_DIR}" 2>/dev/null)" ]]; then
+        log_warn "No build artifacts found. Running build first..."
+        interactive_build
+    fi
+
     cmd_release "${target}"
 }
 
@@ -1001,7 +1131,9 @@ main() {
         release) verify_submodule_commits; cmd_release "$@" ;;
         bump)    cmd_bump "$@" ;;
         sync)    cmd_sync "$@" ;;
-        publish) cmd_publish "$@" ;;
+        docs-build)    cmd_docs_build "$@" ;;
+        docs-preview)  cmd_docs_preview "$@" ;;
+        docs-publish)  cmd_docs_publish "$@" ;;
         clean)   cmd_clean "$@" ;;
         -h|--help) usage; exit 0 ;;
         *)
