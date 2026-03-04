@@ -279,6 +279,14 @@ cmd_docs_build() {
     local download_url="https://github.com/metisx-dev/xvector-suite/releases/download/${release_tag}/xvector-suite-${xv_ver}-dist.tar.gz"
     log_info "Docs download URL: ${download_url}"
 
+    # Confirm release tag with user (skip when called from cmd_release)
+    if [[ -z "${_SKIP_DOCS_CONFIRM:-}" ]]; then
+        if ! confirm_prompt "Build docs with release_tag=${release_tag}?"; then
+            log_warn "Documentation build cancelled."
+            return 0
+        fi
+    fi
+
     # Generate a version overlay that includes the release tag
     local overlay
     overlay=$(mktemp --suffix=.yml)
@@ -664,9 +672,9 @@ cmd_release() {
     fi
     tag_commit_manifest
 
-    # Step 3: Build documentation with the release tag
+    # Step 3: Build documentation with the release tag (skip confirmation in release flow)
     log_info "Building documentation with release tag: ${_SUITE_TAG}"
-    cmd_docs_build "${_SUITE_TAG}"
+    _SKIP_DOCS_CONFIRM=1 cmd_docs_build "${_SUITE_TAG}"
 
     # Step 4: Push and create GitHub Release (requires confirmation)
     if ! confirm_prompt "Push tag '${_SUITE_TAG}' and create GitHub Release?"; then
