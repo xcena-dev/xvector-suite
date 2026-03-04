@@ -24,11 +24,11 @@ git clone --recursive <repo-url>
 | `status` | Show repo state, versions, and build artifacts |
 | `show [target]` | Show version(s) and git hashes |
 | `sync` | Fetch latest submodule commits and update references |
-| `build [target]` | Build artifacts into `packages/build/` |
+| `build [target]` | Build artifacts into `dist/build/` |
 | `bump <target> <type>` | Bump version (`major`, `minor`, `patch`) |
 | `tag [target]` | Create git tags, manifest, and GitHub Release |
 | `publish` | Deploy documentation to gh-pages |
-| `clean` | Remove `packages/build/` |
+| `clean` | Remove `dist/build/` |
 
 **Targets:** `xvector`, `xcompute`, `xfaiss`, `all` (default)
 
@@ -59,7 +59,7 @@ Each package follows semver (`MAJOR.MINOR.PATCH`) via VERSION files in submodule
 
 ## Release Workflow
 
-`tag` validates artifacts, creates per-component git tags, commits a manifest to `releases/`, and publishes a GitHub Release.
+`tag` validates artifacts, creates per-component git tags, commits a manifest to `manifests/`, and publishes a GitHub Release.
 
 | Scope | Tag Format | Repository |
 |-------|-----------|------------|

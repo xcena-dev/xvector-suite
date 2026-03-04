@@ -5,8 +5,8 @@ set -uo pipefail
 SUITE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 XVECTOR_DIR="${SUITE_ROOT}/xvector-dev"
 XFAISS_DIR="${SUITE_ROOT}/xfaiss"
-PACKAGES_DIR="${SUITE_ROOT}/packages"
-BUILD_DIR="${PACKAGES_DIR}/build"
+DIST_DIR="${SUITE_ROOT}/dist"
+BUILD_DIR="${DIST_DIR}/build"
 XVECTOR_SH="${XVECTOR_DIR}/scripts/xvector.sh"
 PACKAGING_SH="${XVECTOR_DIR}/scripts/packaging.sh"
 
@@ -245,27 +245,7 @@ cmd_bump() {
     log_info "Don't forget to commit in the submodule and update xvector-suite."
 }
 
-# --- show ---
-
-cmd_show() {
-    local target="${1:-all}"
-    validate_target "${target}"
-
-    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
-        get_target_version "xvector"
-        echo "xvector    ${_VERSION} ($(git -C "${_TARGET_REPO_DIR}" rev-parse HEAD))"
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
-        get_target_version "xcompute"
-        echo "xcompute   ${_VERSION} ($(git -C "${_TARGET_REPO_DIR}" rev-parse HEAD))"
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
-        get_target_version "xfaiss"
-        echo "xfaiss     ${_VERSION} ($(git -C "${_TARGET_REPO_DIR}" rev-parse HEAD)) upstream=${_UPSTREAM}"
-    fi
-}
-
-# --- package ---
+# --- build ---
 
 _pkg_build_xvector() {
     if ! "${XVECTOR_SH}" build --release --clean; then
@@ -274,7 +254,7 @@ _pkg_build_xvector() {
     fi
 }
 
-cmd_package() {
+cmd_build() {
     local target="${1:-all}"
     validate_target "${target}"
 
@@ -300,15 +280,6 @@ cmd_package() {
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         steps+=("Create xfaiss source archive");           step_funcs+=("package_xfaiss")
     fi
-    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
-        steps+=("Build documentation (Jekyll + Doxygen)"); step_funcs+=("build_docs_xvector_dev")
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
-        steps+=("Package xvector documentation");          step_funcs+=("docs_xvector")
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
-        steps+=("Package xcompute documentation");         step_funcs+=("docs_xcompute")
-    fi
 
     local total=${#steps[@]}
 
@@ -329,6 +300,11 @@ cmd_package() {
     echo ""
     log_info "Artifacts in ${BUILD_DIR}/:"
     ls -lh "${BUILD_DIR}/"
+
+    # Create distribution tarball when building all targets
+    if [[ "${target}" == "all" ]]; then
+        _build_dist_tarball
+    fi
 }
 
 package_deb() {
@@ -437,7 +413,7 @@ tag_create_release_dir() {
     date_str=$(date +%Y%m%d)
     suite_hash=$(git -C "${SUITE_ROOT}" rev-parse --short=7 HEAD)
     _RELEASE_NAME="build-${date_str}-${suite_hash}"
-    _RELEASE_DIR="${PACKAGES_DIR}/${_RELEASE_NAME}"
+    _RELEASE_DIR="${DIST_DIR}/${_RELEASE_NAME}"
 
     if [[ -d "${_RELEASE_DIR}" ]]; then
         log_error "Release directory already exists: ${_RELEASE_DIR}"
@@ -504,15 +480,15 @@ tag_create_git_tags() {
 }
 
 tag_commit_manifest() {
-    local releases_dir="${SUITE_ROOT}/releases"
+    local manifests_dir="${SUITE_ROOT}/releases"
     local epoch date_str
     epoch=$(date +%s)
     date_str=$(date +%Y%m%d)
-    mkdir -p "${releases_dir}"
-    cp "${_RELEASE_DIR}/manifest.json" "${releases_dir}/manifest-${epoch}.json"
-    git -C "${SUITE_ROOT}" add "releases/manifest-${epoch}.json"
+    mkdir -p "${manifests_dir}"
+    cp "${_RELEASE_DIR}/manifest.json" "${manifests_dir}/manifest-${epoch}.json"
+    git -C "${SUITE_ROOT}" add "manifests/manifest-${epoch}.json"
     git -C "${SUITE_ROOT}" commit -m "Add release manifest (xvector=${_TAG_XV_VER}, xcompute=${_TAG_XC_VER}, xfaiss=${_TAG_XF_VER})"
-    log_info "Manifest committed: releases/manifest-${epoch}.json"
+    log_info "Manifest committed: manifests/manifest-${epoch}.json"
 
     _SUITE_TAG="release-${epoch}"
     git -C "${SUITE_ROOT}" tag -a "${_SUITE_TAG}" -m "Release ${date_str} (xvector=${_TAG_XV_VER}, xcompute=${_TAG_XC_VER}, xfaiss=${_TAG_XF_VER})"
@@ -585,69 +561,18 @@ tag_target() {
     log_info "Created tag: ${tag_name} in $(basename "${repo_dir}")"
 }
 
-cmd_tag() {
+cmd_release() {
     local target="${1:-all}"
     validate_target "${target}"
 
     tag_validate "${target}"
-    cmd_dist
+    cmd_build "all"
     tag_create_release_dir
     tag_write_manifest
     tag_create_git_tags "${target}"
     tag_commit_manifest
     tag_push_and_release
 }
-
-# --- docs (called from cmd_package) ---
-
-build_docs_xvector_dev() {
-    if [[ ! -d "${XVECTOR_DIR}/.venv" ]]; then
-        log_info "Python venv not found. Running setup..."
-        if ! "${XVECTOR_SH}" setup; then
-            log_error "Setup failed"
-            exit 1
-        fi
-    fi
-
-    log_info "Building documentation (Jekyll + Doxygen)..."
-    if ! "${XVECTOR_SH}" docs build; then
-        log_error "Documentation build failed"
-        exit 1
-    fi
-}
-
-docs_xvector() {
-    read_version "${XVECTOR_VERSION_FILE}"
-    local version="${_VERSION}"
-    local site_dir="${XVECTOR_DIR}/build/site/xvector-suite/xvector"
-    local tarball_name="xvector-docs_${version}.tar.gz"
-
-    if [[ ! -d "${site_dir}" ]]; then
-        log_error "Documentation not found: ${site_dir}"
-        exit 1
-    fi
-
-    log_info "Packaging xvector ${version} documentation..."
-    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site/xvector-suite" "xvector"
-    log_info "Created: ${tarball_name}"
-}
-
-docs_xcompute() {
-    read_version "${XCOMPUTE_VERSION_FILE}"
-    local version="${_VERSION}"
-    local site_dir="${XVECTOR_DIR}/build/site/xvector-suite/xcompute"
-    local tarball_name="xcompute-docs_${version}.tar.gz"
-
-    if [[ ! -d "${site_dir}" ]]; then
-        log_error "Documentation not found: ${site_dir}"
-        exit 1
-    fi
-
-    log_info "Packaging xcompute ${version} documentation..."
-    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${XVECTOR_DIR}/build/site/xvector-suite" "xcompute"
-    log_info "Created: ${tarball_name}"
-}
-
 
 # --- sync ---
 
@@ -728,9 +653,9 @@ cmd_clean() {
     fi
 }
 
-# --- dist ---
+# --- dist (internal helper, called from cmd_build when target=all) ---
 
-cmd_dist() {
+_build_dist_tarball() {
     read_version "${XVECTOR_VERSION_FILE}"
     local xv_ver="${_VERSION}"
 
@@ -745,27 +670,25 @@ cmd_dist() {
     local deb_xcompute="libxcompute-dev_${xc_ver}_amd64.deb"
     local tar_xfaiss="xfaiss-${xf_ver}+faiss${upstream_short}-source.tar.gz"
     local tar_examples="xcompute-examples-${xc_ver}.tar.gz"
-    local tar_xvector_docs="xvector-docs_${xv_ver}.tar.gz"
-    local tar_xcompute_docs="xcompute-docs_${xc_ver}.tar.gz"
 
     # Validate artifacts
     local missing=0
     for artifact in "${deb_xvector}" "${deb_xcompute}" "${tar_xfaiss}" \
-                    "${tar_examples}" "${tar_xvector_docs}" "${tar_xcompute_docs}"; do
+                    "${tar_examples}"; do
         if [[ ! -f "${BUILD_DIR}/${artifact}" ]]; then
             log_error "Missing artifact: ${BUILD_DIR}/${artifact}"
             missing=1
         fi
     done
     if [[ ${missing} -ne 0 ]]; then
-        log_error "Run 'build' first to produce all artifacts."
-        exit 1
+        log_error "Build artifacts incomplete; dist tarball not created."
+        return 1
     fi
 
     # Validate setup.sh
-    if [[ ! -f "${SUITE_ROOT}/packaging/setup.sh" ]]; then
-        log_error "setup.sh not found at ${SUITE_ROOT}/packaging/setup.sh"
-        exit 1
+    if [[ ! -f "${SUITE_ROOT}/installer/setup.sh" ]]; then
+        log_error "setup.sh not found at ${SUITE_ROOT}/installer/setup.sh"
+        return 1
     fi
 
     local suite_name="xvector-suite-${xv_ver}"
@@ -781,9 +704,7 @@ cmd_dist() {
     cp "${BUILD_DIR}/${deb_xcompute}"      "${staging_dir}/"
     cp "${BUILD_DIR}/${tar_xfaiss}"        "${staging_dir}/"
     cp "${BUILD_DIR}/${tar_examples}"      "${staging_dir}/"
-    cp "${BUILD_DIR}/${tar_xvector_docs}"  "${staging_dir}/"
-    cp "${BUILD_DIR}/${tar_xcompute_docs}" "${staging_dir}/"
-    cp "${SUITE_ROOT}/packaging/setup.sh"   "${staging_dir}/"
+    cp "${SUITE_ROOT}/installer/setup.sh"   "${staging_dir}/"
     chmod +x "${staging_dir}/setup.sh"
 
     # Create distribution tarball
@@ -793,7 +714,7 @@ cmd_dist() {
     local tarball_path="${BUILD_DIR}/${tarball_name}"
     local tarball_size
     tarball_size=$(du -sh "${tarball_path}" | cut -f1)
-    log_info "Created: ${tarball_path} (${tarball_size})"
+    log_info "Created dist tarball: ${tarball_path} (${tarball_size})"
 }
 
 # --- status ---
@@ -854,8 +775,8 @@ cmd_status() {
 
     # Release directories
     local release_count
-    release_count=$(find "${PACKAGES_DIR}" -maxdepth 1 -name 'build-*' -type d 2>/dev/null | wc -l)
-    echo "  Releases:        ${release_count} directory(ies) in ${PACKAGES_DIR}/"
+    release_count=$(find "${DIST_DIR}" -maxdepth 1 -name 'build-*' -type d 2>/dev/null | wc -l)
+    echo "  Releases:        ${release_count} directory(ies) in ${DIST_DIR}/"
     echo ""
 }
 
@@ -918,30 +839,26 @@ Version is managed in each submodule's VERSION file (pure semver).
 
 Commands:
   status             Show repo state, versions, build artifacts
-  show [target]      Show version(s)
   sync               Fetch latest submodule commits and commit references
-  build [target]     Build artifacts into packages/build/
+  build [target]     Build artifacts + dist tarball into dist/build/
   bump <target> <type>
                      Bump version (major, minor, patch)
                      Targets: xvector, xcompute, xfaiss
-  tag [target]       Create git tags and finalize release to packages/build-YYYYMMDD-<hash>/
-  publish            Publish documentation to gh-pages (always fresh, no stale files)
-  clean              Remove build artifacts (packages/build/)
-  dist               Bundle artifacts + setup.sh into a distribution tarball
+  release [target]   Build + tag + GitHub Release
+  publish            Publish documentation to gh-pages
+  clean              Remove build artifacts (dist/build/)
 
 Targets:
-  xvector    libxvector-dev .deb package / API docs
-  xcompute   libxcompute-dev .deb package / examples / API docs
+  xvector    libxvector-dev .deb package
+  xcompute   libxcompute-dev .deb package / examples
   xfaiss     xfaiss source tarball
   all        All targets (default)
 
 Examples:
     $(basename "$0") status
-    $(basename "$0") show
-    $(basename "$0") show xvector
     $(basename "$0") build
     $(basename "$0") build xfaiss
-    $(basename "$0") tag all
+    $(basename "$0") release all
     $(basename "$0") bump xvector patch   # 0.1.0 -> 0.1.1
     $(basename "$0") bump xfaiss minor    # 0.1.0 -> 0.2.0 (preserves upstream= line)
     $(basename "$0") sync                 # Update submodules to latest remote
@@ -956,33 +873,28 @@ interactive_menu() {
     echo ""
     echo -e "\033[1;36m  xvector-suite packaging\033[0m"
     echo ""
-    echo "  1) status   Show repo state, versions, build artifacts"
-    echo "  2) show     Show current versions"
-    echo "  3) sync     Fetch & update submodules"
-    echo "  4) build    Sync + verify + build all artifacts"
-    echo "  5) bump     Bump a version"
-    echo "  6) tag      Create git tags & GitHub Release"
-    echo "  7) publish  Publish docs to gh-pages"
-    echo "  8) clean    Remove build artifacts"
-    echo "  9) dist     Bundle artifacts + setup.sh into distribution tarball"
+    echo "  1) status    Show repo state, versions, artifacts"
+    echo "  2) sync      Fetch & update submodules"
+    echo "  3) build     Build all artifacts + dist tarball"
+    echo "  4) bump      Bump a version"
+    echo "  5) release   Build + tag + GitHub Release"
+    echo "  6) publish   Publish docs to gh-pages"
     echo ""
-    echo "  h) help     Show full usage"
-    echo "  q) quit"
+    echo "  c) clean     Remove build artifacts"
+    echo "  h) help      q) quit"
     echo ""
 
     local choice
-    read -rp "  Select [1-9, h, q]: " choice
+    read -rp "  Select [1-6, c, h, q]: " choice
 
     case "${choice}" in
         1) cmd_status ;;
-        2) verify_submodule_commits; cmd_show ;;
-        3) cmd_sync ;;
-        4) interactive_build ;;
-        5) interactive_bump ;;
-        6) verify_submodule_commits; interactive_tag ;;
-        7) cmd_publish ;;
-        8) cmd_clean ;;
-        9) cmd_dist ;;
+        2) cmd_sync ;;
+        3) interactive_build ;;
+        4) interactive_bump ;;
+        5) verify_submodule_commits; interactive_release ;;
+        6) cmd_publish ;;
+        c) cmd_clean ;;
         h) usage ;;
         q) exit 0 ;;
         *) log_error "Invalid choice: ${choice}"; exit 1 ;;
@@ -1028,12 +940,10 @@ interactive_bump() {
 interactive_build() {
     cmd_sync
     verify_submodule_commits
-    cmd_show
-    echo ""
-    cmd_package "all"
+    cmd_build "all"
 }
 
-interactive_tag() {
+interactive_release() {
     echo ""
     echo "  Target:"
     echo "    1) all"
@@ -1050,7 +960,7 @@ interactive_tag() {
         *) log_error "Invalid target"; exit 1 ;;
     esac
 
-    cmd_tag "${target}"
+    cmd_release "${target}"
 }
 
 # --- Main ---
@@ -1071,14 +981,12 @@ main() {
 
     case "${command}" in
         status)  cmd_status "$@" ;;
-        show)    verify_submodule_commits; cmd_show "$@" ;;
-        build)   verify_submodule_commits; cmd_package "$@" ;;
-        tag)     verify_submodule_commits; cmd_tag "$@" ;;
+        build)   verify_submodule_commits; cmd_build "$@" ;;
+        release) verify_submodule_commits; cmd_release "$@" ;;
         bump)    cmd_bump "$@" ;;
         sync)    cmd_sync "$@" ;;
         publish) cmd_publish "$@" ;;
         clean)   cmd_clean "$@" ;;
-        dist)    cmd_dist "$@" ;;
         -h|--help) usage; exit 0 ;;
         *)
             log_error "Unknown command: ${command}"
