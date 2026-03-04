@@ -127,8 +127,8 @@ verify_submodule_commits() {
     actual_xvector=$(git -C "${XVECTOR_DIR}" rev-parse HEAD 2>/dev/null)
     if [[ "${actual_xvector}" != "${expected_xvector}" ]]; then
         log_error "xvector-dev commit mismatch:"
-        log_error "  expected: ${expected_xvector:0:12}"
-        log_error "  actual:   ${actual_xvector:0:12}"
+        log_error "  expected: ${expected_xvector}"
+        log_error "  actual:   ${actual_xvector}"
         failed=1
     fi
 
@@ -137,8 +137,8 @@ verify_submodule_commits() {
     actual_xfaiss=$(git -C "${XFAISS_DIR}" rev-parse HEAD 2>/dev/null)
     if [[ "${actual_xfaiss}" != "${expected_xfaiss}" ]]; then
         log_error "xfaiss commit mismatch:"
-        log_error "  expected: ${expected_xfaiss:0:12}"
-        log_error "  actual:   ${actual_xfaiss:0:12}"
+        log_error "  expected: ${expected_xfaiss}"
+        log_error "  actual:   ${actual_xfaiss}"
         failed=1
     fi
 
@@ -644,9 +644,9 @@ cmd_release() {
     # Show release summary
     echo ""
     log_info "Release: ${_RELEASE_NAME}"
-    log_info "  xvector  = v${_TAG_XV_VER}  (${_TAG_XV_HASH:0:12})"
-    log_info "  xcompute = v${_TAG_XC_VER}  (${_TAG_XV_HASH:0:12})"
-    log_info "  xfaiss   = v${_TAG_XF_VER}  (${_TAG_XF_HASH:0:12})"
+    log_info "  xvector  = v${_TAG_XV_VER}  (${_TAG_XV_HASH})"
+    log_info "  xcompute = v${_TAG_XC_VER}  (${_TAG_XV_HASH})"
+    log_info "  xfaiss   = v${_TAG_XF_VER}  (${_TAG_XF_HASH})"
     echo ""
     ls -lh "${_RELEASE_DIR}/"
 
@@ -708,10 +708,10 @@ cmd_sync() {
         git -C "${XVECTOR_DIR}" checkout "${XVECTOR_DEFAULT_BRANCH}" 2>/dev/null \
             || git -C "${XVECTOR_DIR}" checkout -b "${XVECTOR_DEFAULT_BRANCH}" "origin/${XVECTOR_DEFAULT_BRANCH}"
         git -C "${XVECTOR_DIR}" merge --ff-only "origin/${XVECTOR_DEFAULT_BRANCH}"
-        log_info "xvector-dev: ${xv_before:0:7} -> ${xv_after:0:7}"
+        log_info "xvector-dev: ${xv_before} -> ${xv_after}"
         changed=1
     else
-        log_info "xvector-dev: already up to date (${xv_before:0:7})"
+        log_info "xvector-dev: already up to date (${xv_before})"
     fi
 
     # xfaiss
@@ -729,10 +729,10 @@ cmd_sync() {
         git -C "${XFAISS_DIR}" checkout "${XFAISS_DEFAULT_BRANCH}" 2>/dev/null \
             || git -C "${XFAISS_DIR}" checkout -b "${XFAISS_DEFAULT_BRANCH}" "origin/${XFAISS_DEFAULT_BRANCH}"
         git -C "${XFAISS_DIR}" merge --ff-only "origin/${XFAISS_DEFAULT_BRANCH}"
-        log_info "xfaiss: ${xf_before:0:7} -> ${xf_after:0:7}"
+        log_info "xfaiss: ${xf_before} -> ${xf_after}"
         changed=1
     else
-        log_info "xfaiss: already up to date (${xf_before:0:7})"
+        log_info "xfaiss: already up to date (${xf_before})"
     fi
 
     # Check if parent repo's recorded commits differ from actual submodule HEADs
@@ -855,14 +855,14 @@ cmd_status() {
     actual_xf=$(git -C "${XFAISS_DIR}" rev-parse HEAD 2>/dev/null)
 
     if [[ "${expected_xv}" == "${actual_xv}" ]]; then
-        echo "  xvector-dev:    ok (${actual_xv:0:7})"
+        echo "  xvector-dev:    ok (${actual_xv})"
     else
-        echo -e "  xvector-dev:    \033[0;31mMISMATCH\033[0m expected=${expected_xv:0:7} actual=${actual_xv:0:7}"
+        echo -e "  xvector-dev:    \033[0;31mMISMATCH\033[0m expected=${expected_xv} actual=${actual_xv}"
     fi
     if [[ "${expected_xf}" == "${actual_xf}" ]]; then
-        echo "  xfaiss:         ok (${actual_xf:0:7})"
+        echo "  xfaiss:         ok (${actual_xf})"
     else
-        echo -e "  xfaiss:         \033[0;31mMISMATCH\033[0m expected=${expected_xf:0:7} actual=${actual_xf:0:7}"
+        echo -e "  xfaiss:         \033[0;31mMISMATCH\033[0m expected=${expected_xf} actual=${actual_xf}"
     fi
 
     # Versions with tag existence
