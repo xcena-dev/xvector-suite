@@ -276,7 +276,7 @@ cmd_docs_build() {
     get_target_version "xvector";  local xv_ver="${_VERSION}"
     get_target_version "xcompute"; local xc_ver="${_VERSION}"
 
-    local download_url="https://github.com/metisx-dev/xvector-suite/releases/download/${release_tag}/xvector-suite-${xv_ver}-dist.tar.gz"
+    local download_url="https://github.com/xcena-dev/xvector-suite/releases/download/${release_tag}/xvector-suite-${xv_ver}-dist.tar.gz"
     log_info "Docs download URL: ${download_url}"
 
     # Confirm release tag with user (skip when called from cmd_release)
