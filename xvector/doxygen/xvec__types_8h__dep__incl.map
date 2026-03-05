@@ -1,0 +1,13 @@
+<map id="include/xvector/xvec_types.h" name="include/xvector/xvec_types.h">
+<area shape="rect" id="Node000001" title="Core types, enums, and structures for the XVector library." alt="" coords="368,5,525,45"/>
+<area shape="rect" id="Node000002" href="$xvec__buffer_8h.html" title="Buffer management for the XVector library." alt="" coords="5,93,163,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="355,51,164,96,163,91,354,46"/>
+<area shape="rect" id="Node000003" href="$xvec__context_8h.html" title="Execution context management for the XVector library." alt="" coords="187,93,344,133"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="396,54,306,96,304,91,394,49"/>
+<area shape="rect" id="Node000004" href="$xvec__ivf__flat_8h.html" title="IVF&#45;Flat (Inverted File with Flat vectors) index interface." alt="" coords="368,93,525,133"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="449,59,449,93,444,93,444,59"/>
+<area shape="rect" id="Node000005" href="$xvec__ivf__rabitq_8h.html" title="IVF&#45;RaBitQ (Inverted File with Random Bit Quantization) index interface." alt="" coords="549,93,707,133"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="500,49,589,91,587,96,498,54"/>
+<area shape="rect" id="Node000006" href="$xvec__log_8h.html" title="Log sink registration API for the XVector library." alt="" coords="731,93,888,133"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="539,46,731,91,730,96,538,51"/>
+</map>

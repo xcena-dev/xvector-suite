@@ -1,0 +1,8 @@
+<map id="libs/compute/include/xcompute/vpe_types.hpp" name="libs/compute/include/xcompute/vpe_types.hpp">
+<area shape="rect" id="Node000001" title=" " alt="" coords="81,5,271,45"/>
+<area shape="rect" id="Node000002" href="$vpe__context_8hpp.html" title=" " alt="" coords="5,93,208,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="154,58,124,95,120,91,150,55"/>
+<area shape="rect" id="Node000003" href="$xcompute_8hpp.html" title="Master include header for the xcompute library." alt="" coords="82,181,270,221"/>
+<area shape="poly" id="edge3_Node000001_Node000003" title=" " alt="" coords="203,55,223,92,227,113,223,134,210,161,195,183,191,180,206,158,217,133,221,113,217,94,199,58"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="133,143,163,179,159,183,129,146"/>
+</map>

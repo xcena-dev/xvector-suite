@@ -1,0 +1,86 @@
+{"0": {
+    "doc": "Examples",
+    "title": "Examples",
+    "content": "Code examples demonstrating XCompute library usage in device kernels. ",
+    "url": "/xvector-suite/xcompute/examples.html",
+    
+    "relUrl": "/examples.html"
+  },"1": {
+    "doc": "Examples",
+    "title": "Quick Start",
+    "content": "L2 Distance . #include &lt;xcompute/xcompute.hpp&gt; void computeL2Distance(const float* vec1, const float* vec2, float* result, uint64_t dimension) { mu::vdma::VpeContext ctx(dimension); uint64_t buf1 = ctx.allocateBuffer(); uint64_t buf2 = ctx.allocateBuffer(); uint64_t diffBuf = ctx.allocateBuffer(); ctx.load(vec1, buf1); ctx.load(vec2, buf2); ctx.sub(buf2, buf1, diffBuf); *result = ctx.dot(diffBuf, diffBuf); // L2^2 = (vec2 - vec1) · (vec2 - vec1) } MU_KERNEL_ADD(computeL2Distance); . Inner Product . void computeInnerProduct(const float* vec1, const float* vec2, float* result, uint64_t dimension) { mu::vdma::VpeContext ctx(dimension, mu::vdma::VpeIdStrategy::ByClusterId); uint64_t buf1 = ctx.allocateBuffer(); uint64_t buf2 = ctx.allocateBuffer(); ctx.load(vec1, buf1); ctx.load(vec2, buf2); *result = ctx.dot(buf1, buf2); } MU_KERNEL_ADD(computeInnerProduct); . Vector Addition . void computeVectorAdd(const float* vec1, const float* vec2, float* result, uint64_t dimension) { mu::vdma::VpeContext ctx(dimension); uint64_t buf1 = ctx.allocateBuffer(); uint64_t buf2 = ctx.allocateBuffer(); uint64_t bufResult = ctx.allocateBuffer(); ctx.load(vec1, buf1); ctx.load(vec2, buf2); ctx.add(buf1, buf2, bufResult); // bufResult = buf1 + buf2 ctx.store(bufResult, result); // Write back to DRAM } MU_KERNEL_ADD(computeVectorAdd); . ",
+    "url": "/xvector-suite/xcompute/examples.html#quick-start",
+    
+    "relUrl": "/examples.html#quick-start"
+  },"2": {
+    "doc": "Examples",
+    "title": "CMake Integration",
+    "content": "cmake_minimum_required(VERSION 3.11) # Set MU toolchain paths from environment variables (set by SDK installer) set(MU_LIB_PATH \"$ENV{MU_LIB_PATH}\") set(MU_LLVM_PATH \"$ENV{MU_LLVM_PATH}\") set(CMAKE_C_COMPILER ${MU_LLVM_PATH}/bin/clang) set(CMAKE_CXX_COMPILER ${MU_LLVM_PATH}/bin/clang) project(my_device_kernel LANGUAGES CXX) # Find xcompute package (installed at /opt/xcompute/) find_package(xcompute REQUIRED) # Create device kernel executable add_executable(my_kernel.mubin my_kernel.cpp) # Link xcompute library target_link_libraries(my_kernel.mubin PRIVATE xcompute) # Include directories target_include_directories(my_kernel.mubin PRIVATE ${MU_LLVM_PATH}/picolibc-rv/include ${MU_LLVM_PATH}/libcxx-rv/include/c++/v1 ${MU_LIB_PATH}/include ) # Set MU-specific compile flags target_compile_options(my_kernel.mubin PRIVATE -target riscv64-unknown-elf -march=rv64gcv_zvl256b_zve64x_zve64f_zve64d -mabi=lp64d -O2 -fno-exceptions -fno-rtti ) . ",
+    "url": "/xvector-suite/xcompute/examples.html#cmake-integration",
+    
+    "relUrl": "/examples.html#cmake-integration"
+  },"3": {
+    "doc": "Examples",
+    "title": "Example Project",
+    "content": "The xcompute-examples package includes complete Host + Device examples: . | basic – L2 distance, inner product, vector add/sub with test runner | benchmark – Performance measurement in GFLOPS | . Extract and build: . tar -xzf xcompute-examples-&lt;version&gt;.tar.gz cd xcompute-examples-&lt;version&gt; mkdir build &amp;&amp; cd build cmake -DCMAKE_PREFIX_PATH=/opt/xcompute .. make ./basic/compute_example_host . Expected Output . ======================================== xcompute Usage Example ======================================== [Host] Initializing PXL context for device 0 [Host] Loading mubin: .../bin/compute_example.mubin [Host] Initialization complete === L2 Distance Test === [Host] Test PASSED === Inner Product Test === [Host] Test PASSED === Vector Add Test === [Host] Test PASSED === Vector Sub Test === [Host] Test PASSED ======================================== Results: 4/4 tests passed ======================================== . ",
+    "url": "/xvector-suite/xcompute/examples.html#example-project",
+    
+    "relUrl": "/examples.html#example-project"
+  },"4": {
+    "doc": "Examples",
+    "title": "Tips",
+    "content": "Buffer Allocation . Always check allocation results before using buffers: . uint64_t buf = ctx.allocateBuffer(); if (buf == mu::vdma::VpeContext::INVALID_BUFFER) { return; // allocation failed } . VpeContext supports up to 32 buffers. Query availability with getAvailableBufferCount() before bulk allocation. Performance . | Minimize DRAM transfers – Keep data in SRAM buffers as long as possible; batch operations before storing results back | Choose VpeIdStrategy – Use ByThreadId for parallelism within an MU, ByClusterId for parallelism across clusters | . ",
+    "url": "/xvector-suite/xcompute/examples.html#tips",
+    
+    "relUrl": "/examples.html#tips"
+  },"5": {
+    "doc": "Getting Started",
+    "title": "Getting Started",
+    "content": "This guide walks you through installing XCompute and setting up your development environment. ",
+    "url": "/xvector-suite/xcompute/getting-started.html",
+    
+    "relUrl": "/getting-started.html"
+  },"6": {
+    "doc": "Getting Started",
+    "title": "Prerequisites",
+    "content": ". | Ubuntu 24.04 | XCENA SDK installed (provides MU library and MU LLVM toolchain) | CMake 3.11 or higher | . ",
+    "url": "/xvector-suite/xcompute/getting-started.html#prerequisites",
+    
+    "relUrl": "/getting-started.html#prerequisites"
+  },"7": {
+    "doc": "Getting Started",
+    "title": "Installation",
+    "content": "Debian Package . sudo dpkg -i libxcompute-dev_0.1.0_amd64.deb . libxcompute-dev installs: . | Path | Contents | . | /opt/xcompute/include/xcompute/ | XCompute C++ headers | . | /opt/xcompute/lib/ | libxcompute.a static library and CMake config | . ",
+    "url": "/xvector-suite/xcompute/getting-started.html#installation",
+    
+    "relUrl": "/getting-started.html#installation"
+  },"8": {
+    "doc": "Getting Started",
+    "title": "Next Steps",
+    "content": ". | Examples – Code examples and CMake integration | XCompute API – Complete API documentation | . ",
+    "url": "/xvector-suite/xcompute/getting-started.html#next-steps",
+    
+    "relUrl": "/getting-started.html#next-steps"
+  },"9": {
+    "doc": "Home",
+    "title": "Overview",
+    "content": "XCompute is a device-side C++ library designed for XCENA’s Computational Memory (MX1). It provides high-performance vector computation primitives for VPE (Vector Processing Engine). Used together with the MU library (mu/mu.hpp), XCompute enables developers to build high-performance MU kernels that run on the MX1’s vector processing hardware. ",
+    "url": "/xvector-suite/xcompute/#overview",
+    
+    "relUrl": "/#overview"
+  },"10": {
+    "doc": "Home",
+    "title": "Key Features",
+    "content": ". | VPE vector operations – Dot product, add, sub, mul, div, square, reduce, comparison, and bitwise operations | Thread-safe – Safe for concurrent access; each thread should use its own VpeContext for best performance | . See Getting Started to install XCompute and set up your development environment. ",
+    "url": "/xvector-suite/xcompute/#key-features",
+    
+    "relUrl": "/#key-features"
+  },"11": {
+    "doc": "Home",
+    "title": "Home",
+    "content": " ",
+    "url": "/xvector-suite/xcompute/",
+    
+    "relUrl": "/"
+  }
+}
