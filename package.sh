@@ -13,7 +13,7 @@ DOCS_SH="${XVECTOR_DIR}/scripts/docs.sh"
 
 # VERSION file paths
 XVECTOR_VERSION_FILE="${XVECTOR_DIR}/VERSION"
-XCOMPUTE_VERSION_FILE="${XVECTOR_DIR}/VERSION_XCOMPUTE"
+XARITH_VERSION_FILE="${XVECTOR_DIR}/VERSION_XARITH"
 XFAISS_VERSION_FILE="${XFAISS_DIR}/VERSION"
 
 # Default representative branches per submodule
@@ -31,7 +31,7 @@ resolve_target() {
     local target="$1"
     case "${target}" in
         xvector)  _TARGET_VERSION_FILE="${XVECTOR_VERSION_FILE}"; _TARGET_REPO_DIR="${XVECTOR_DIR}" ;;
-        xcompute) _TARGET_VERSION_FILE="${XCOMPUTE_VERSION_FILE}"; _TARGET_REPO_DIR="${XVECTOR_DIR}" ;;
+        xarith) _TARGET_VERSION_FILE="${XARITH_VERSION_FILE}"; _TARGET_REPO_DIR="${XVECTOR_DIR}" ;;
         xfaiss)   _TARGET_VERSION_FILE="${XFAISS_VERSION_FILE}"; _TARGET_REPO_DIR="${XFAISS_DIR}" ;;
         *) log_error "Invalid target: ${target}"; exit 1 ;;
     esac
@@ -200,8 +200,8 @@ bump_semver() {
 validate_target() {
     local target="$1"
     case "${target}" in
-        xvector|xcompute|xfaiss|all) return 0 ;;
-        *) log_error "Invalid target: ${target}. Must be xvector, xcompute, xfaiss, or all."; exit 1 ;;
+        xvector|xarith|xfaiss|all) return 0 ;;
+        *) log_error "Invalid target: ${target}. Must be xvector, xarith, xfaiss, or all."; exit 1 ;;
     esac
 }
 
@@ -213,7 +213,7 @@ cmd_bump() {
 
     if [[ -z "${target}" || -z "${bump_type}" ]]; then
         log_error "Usage: package.sh bump <target> <type>"
-        log_error "  target: xvector, xcompute, xfaiss"
+        log_error "  target: xvector, xarith, xfaiss"
         log_error "  type:   major, minor, patch"
         exit 1
     fi
@@ -274,7 +274,7 @@ cmd_docs_build() {
     fi
 
     get_target_version "xvector";  local xv_ver="${_VERSION}"
-    get_target_version "xcompute"; local xc_ver="${_VERSION}"
+    get_target_version "xarith"; local xc_ver="${_VERSION}"
 
     local download_url="https://github.com/xcena-dev/xvector-suite/releases/download/${release_tag}/xvector-suite-${xv_ver}-dist.tar.gz"
     log_info "Docs download URL: ${download_url}"
@@ -292,7 +292,7 @@ cmd_docs_build() {
     overlay=$(mktemp --suffix=.yml)
     cat > "${overlay}" <<EOF
 xvector_version: "${xv_ver}"
-xcompute_version: "${xc_ver}"
+xarith_version: "${xc_ver}"
 release_tag: "${release_tag}"
 EOF
 
@@ -323,12 +323,12 @@ cmd_build() {
     # Build step registry
     local steps=() step_funcs=()
 
-    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xarith" ]]; then
         steps+=("Build xvector-dev (clean release)");      step_funcs+=("_pkg_build_xvector")
         steps+=("Create Debian packages");                 step_funcs+=("package_deb")
     fi
-    if [[ "${target}" == "all" || "${target}" == "xcompute" ]]; then
-        steps+=("Create xcompute examples tarball");       step_funcs+=("package_examples")
+    if [[ "${target}" == "all" || "${target}" == "xarith" ]]; then
+        steps+=("Create xarith examples tarball");       step_funcs+=("package_examples")
     fi
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         steps+=("Create xfaiss source archive");           step_funcs+=("package_xfaiss")
@@ -369,7 +369,7 @@ package_deb() {
 }
 
 package_examples() {
-    log_info "Creating xcompute examples tarball..."
+    log_info "Creating xarith examples tarball..."
     if ! "${PACKAGING_SH}" examples --output "${BUILD_DIR}"; then
         log_error "Examples tarball creation failed"
         exit 1
@@ -432,17 +432,17 @@ tag_verify_artifact_versions() {
     local target="$1"
     local stale=0
 
-    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xarith" ]]; then
         get_target_version "xvector"
         local xv_ver="${_VERSION}"
         if ! ls "${BUILD_DIR}"/libxvector-dev*"${xv_ver}"* &>/dev/null; then
             log_error "No artifact matching xvector version ${xv_ver} in ${BUILD_DIR}/"
             stale=1
         fi
-        get_target_version "xcompute"
+        get_target_version "xarith"
         local xc_ver="${_VERSION}"
-        if ! ls "${BUILD_DIR}"/libxcompute-dev*"${xc_ver}"* &>/dev/null; then
-            log_error "No artifact matching xcompute version ${xc_ver} in ${BUILD_DIR}/"
+        if ! ls "${BUILD_DIR}"/libxarith-dev*"${xc_ver}"* &>/dev/null; then
+            log_error "No artifact matching xarith version ${xc_ver} in ${BUILD_DIR}/"
             stale=1
         fi
     fi
@@ -486,7 +486,7 @@ tag_write_manifest() {
     _TAG_XF_HASH=$(get_git_hash "${XFAISS_DIR}")
 
     get_target_version "xvector";  _TAG_XV_VER="${_VERSION}"
-    get_target_version "xcompute"; _TAG_XC_VER="${_VERSION}"
+    get_target_version "xarith"; _TAG_XC_VER="${_VERSION}"
     get_target_version "xfaiss";   _TAG_XF_VER="${_VERSION}"
 
     jq -n \
@@ -501,7 +501,7 @@ tag_write_manifest() {
             date: $date,
             suite_commit: $suite_hash,
             xvector: { version: $xv_ver, git_hash: $xv_hash },
-            xcompute: { version: $xc_ver, git_hash: $xv_hash },
+            xarith: { version: $xc_ver, git_hash: $xv_hash },
             xfaiss: { version: $xf_ver, git_hash: $xf_hash },
             artifacts: []
         }' > "${manifest}"
@@ -523,9 +523,9 @@ tag_write_manifest() {
 tag_create_git_tags() {
     local target="$1"
 
-    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xcompute" ]]; then
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xarith" ]]; then
         tag_target "xvector"
-        tag_target "xcompute"
+        tag_target "xarith"
     fi
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         tag_target "xfaiss"
@@ -540,11 +540,11 @@ tag_commit_manifest() {
     mkdir -p "${manifests_dir}"
     cp "${_RELEASE_DIR}/manifest.json" "${manifests_dir}/manifest-${epoch}.json"
     git -C "${SUITE_ROOT}" add "manifests/manifest-${epoch}.json"
-    git -C "${SUITE_ROOT}" commit -m "Add release manifest (xvector=${_TAG_XV_VER}, xcompute=${_TAG_XC_VER}, xfaiss=${_TAG_XF_VER})"
+    git -C "${SUITE_ROOT}" commit -m "Add release manifest (xvector=${_TAG_XV_VER}, xarith=${_TAG_XC_VER}, xfaiss=${_TAG_XF_VER})"
     log_info "Manifest committed: manifests/manifest-${epoch}.json"
 
     _SUITE_TAG="release-${epoch}"
-    git -C "${SUITE_ROOT}" tag -a "${_SUITE_TAG}" -m "Release ${date_str} (xvector=${_TAG_XV_VER}, xcompute=${_TAG_XC_VER}, xfaiss=${_TAG_XF_VER})"
+    git -C "${SUITE_ROOT}" tag -a "${_SUITE_TAG}" -m "Release ${date_str} (xvector=${_TAG_XV_VER}, xarith=${_TAG_XC_VER}, xfaiss=${_TAG_XF_VER})"
     log_info "Created tag: ${_SUITE_TAG} in xvector-suite"
 }
 
@@ -577,7 +577,7 @@ tag_push_and_release() {
 | Component | Version | Commit |
 |-----------|---------|--------|
 | xvector | ${_TAG_XV_VER} | \`${_TAG_XV_HASH}\` |
-| xcompute | ${_TAG_XC_VER} | \`${_TAG_XV_HASH}\` |
+| xarith | ${_TAG_XC_VER} | \`${_TAG_XV_HASH}\` |
 | xfaiss | ${_TAG_XF_VER} | \`${_TAG_XF_HASH}\` |
 
 **Suite commit:** \`$(git -C "${SUITE_ROOT}" rev-parse HEAD)\`
@@ -653,7 +653,7 @@ cmd_release() {
     echo ""
     log_info "Release: ${_RELEASE_NAME}"
     log_info "  xvector  = v${_TAG_XV_VER}  (${_TAG_XV_HASH})"
-    log_info "  xcompute = v${_TAG_XC_VER}  (${_TAG_XV_HASH})"
+    log_info "  xarith = v${_TAG_XC_VER}  (${_TAG_XV_HASH})"
     log_info "  xfaiss   = v${_TAG_XF_VER}  (${_TAG_XF_HASH})"
     echo ""
     ls -lh "${_RELEASE_DIR}/"
@@ -783,7 +783,7 @@ _build_dist_tarball() {
     read_version "${XVECTOR_VERSION_FILE}"
     local xv_ver="${_VERSION}"
 
-    read_version "${XCOMPUTE_VERSION_FILE}"
+    read_version "${XARITH_VERSION_FILE}"
     local xc_ver="${_VERSION}"
 
     read_xfaiss_version "${XFAISS_VERSION_FILE}"
@@ -791,13 +791,13 @@ _build_dist_tarball() {
     local upstream_short="${_UPSTREAM#faiss-}"
 
     local deb_xvector="libxvector-dev_${xv_ver}_amd64.deb"
-    local deb_xcompute="libxcompute-dev_${xc_ver}_amd64.deb"
+    local deb_xarith="libxarith-dev_${xc_ver}_amd64.deb"
     local tar_xfaiss="xfaiss-${xf_ver}+faiss${upstream_short}-source.tar.gz"
-    local tar_examples="xcompute-examples-${xc_ver}.tar.gz"
+    local tar_examples="xarith-examples-${xc_ver}.tar.gz"
 
     # Validate artifacts
     local missing=0
-    for artifact in "${deb_xvector}" "${deb_xcompute}" "${tar_xfaiss}" \
+    for artifact in "${deb_xvector}" "${deb_xarith}" "${tar_xfaiss}" \
                     "${tar_examples}"; do
         if [[ ! -f "${BUILD_DIR}/${artifact}" ]]; then
             log_error "Missing artifact: ${BUILD_DIR}/${artifact}"
@@ -825,7 +825,7 @@ _build_dist_tarball() {
 
     # Copy artifacts and setup.sh into staging directory
     cp "${BUILD_DIR}/${deb_xvector}"       "${staging_dir}/"
-    cp "${BUILD_DIR}/${deb_xcompute}"      "${staging_dir}/"
+    cp "${BUILD_DIR}/${deb_xarith}"      "${staging_dir}/"
     cp "${BUILD_DIR}/${tar_xfaiss}"        "${staging_dir}/"
     cp "${BUILD_DIR}/${tar_examples}"      "${staging_dir}/"
     cp "${SUITE_ROOT}/installer/setup.sh"   "${staging_dir}/"
@@ -875,7 +875,7 @@ cmd_status() {
 
     # Versions with tag existence
     echo ""
-    for t in xvector xcompute xfaiss; do
+    for t in xvector xarith xfaiss; do
         get_target_version "${t}"
         local tag_name="${t}-v${_VERSION}"
         local tag_status
@@ -909,7 +909,7 @@ cmd_status() {
 cmd_docs_preview() {
     local site_dir="${XVECTOR_DIR}/build/site/xvector-suite"
 
-    if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xcompute" ]]; then
+    if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xarith" ]]; then
         log_error "Documentation not found in ${site_dir}."
         log_error "Run './package.sh build' first (includes docs build)."
         exit 1
@@ -924,7 +924,7 @@ cmd_docs_preview() {
 cmd_docs_publish() {
     local site_dir="${XVECTOR_DIR}/build/site/xvector-suite"
 
-    if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xcompute" ]]; then
+    if [[ ! -d "${site_dir}/xvector" ]] || [[ ! -d "${site_dir}/xarith" ]]; then
         log_error "Documentation not found in ${site_dir}."
         log_error "Run './package.sh build' first (includes docs build)."
         exit 1
@@ -964,7 +964,7 @@ cmd_docs_publish() {
     log_info "Documentation deployed to gh-pages."
     log_info "Contents:"
     log_info "  /xvector/          Jekyll + Doxygen API reference"
-    log_info "  /xcompute/         Jekyll + Doxygen API reference"
+    log_info "  /xarith/         Jekyll + Doxygen API reference"
 }
 
 # --- Usage ---
@@ -985,14 +985,14 @@ Commands:
   docs-preview       Preview built documentation locally (localhost:8000)
   bump <target> <type>
                      Bump version (major, minor, patch)
-                     Targets: xvector, xcompute, xfaiss
+                     Targets: xvector, xarith, xfaiss
   release [target]   Tag + GitHub Release (requires prior build)
   docs-publish       Publish documentation to gh-pages
   clean              Remove build artifacts (dist/build/)
 
 Targets:
   xvector    libxvector-dev .deb package
-  xcompute   libxcompute-dev .deb package / examples
+  xarith   libxarith-dev .deb package / examples
   xfaiss     xfaiss source tarball
   all        All targets (default)
 
@@ -1053,7 +1053,7 @@ interactive_bump() {
     echo ""
     echo "  Target:"
     echo "    1) xvector"
-    echo "    2) xcompute"
+    echo "    2) xarith"
     echo "    3) xfaiss"
     echo ""
     local target_choice
@@ -1061,7 +1061,7 @@ interactive_bump() {
     local target
     case "${target_choice}" in
         1) target="xvector" ;;
-        2) target="xcompute" ;;
+        2) target="xarith" ;;
         3) target="xfaiss" ;;
         *) log_error "Invalid target"; exit 1 ;;
     esac
@@ -1095,7 +1095,7 @@ interactive_release() {
     echo ""
     echo "  Target:"
     echo "    1) all"
-    echo "    2) xvector + xcompute  (always tagged together)"
+    echo "    2) xvector + xarith  (always tagged together)"
     echo "    3) xfaiss"
     echo ""
     local choice
