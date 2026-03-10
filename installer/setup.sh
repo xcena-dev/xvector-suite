@@ -33,18 +33,18 @@ find_artifact() {
     echo "${matches[0]}"
 }
 
-DEB_XCOMPUTE="$(find_artifact "libxcompute-dev package" "libxcompute-dev_*.deb")"
+DEB_XARITH="$(find_artifact "libxarith-dev package" "libxarith-dev_*.deb")"
 DEB_XVECTOR="$(find_artifact "libxvector-dev package" "libxvector-dev_*.deb")"
 XFAISS_SRC="$(find_artifact "xfaiss source archive" "xfaiss-*-source.tar.gz")"
 
-log_info "Found libxcompute-dev: $(basename "${DEB_XCOMPUTE}")"
+log_info "Found libxarith-dev: $(basename "${DEB_XARITH}")"
 log_info "Found libxvector-dev:  $(basename "${DEB_XVECTOR}")"
 log_info "Found xfaiss source:   $(basename "${XFAISS_SRC}")"
 
 # --- Install debs ---
-log_info "Installing $(basename "${DEB_XCOMPUTE}") ..."
-if ! ${SUDO} dpkg -i "${DEB_XCOMPUTE}"; then
-    log_error "Failed to install $(basename "${DEB_XCOMPUTE}")"
+log_info "Installing $(basename "${DEB_XARITH}") ..."
+if ! ${SUDO} dpkg -i "${DEB_XARITH}"; then
+    log_error "Failed to install $(basename "${DEB_XARITH}")"
     exit 1
 fi
 
@@ -67,6 +67,6 @@ log_info "xfaiss source extracted to: $(pwd)/${XFAISS_DIRNAME}"
 # --- Summary ---
 echo ""
 log_info "Installation complete."
-log_info "  Installed: $(basename "${DEB_XCOMPUTE}")"
+log_info "  Installed: $(basename "${DEB_XARITH}")"
 log_info "  Installed: $(basename "${DEB_XVECTOR}")"
 log_info "  Extracted: $(pwd)/${XFAISS_DIRNAME}"

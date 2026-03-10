@@ -4,7 +4,7 @@ Packaging and release management for xvector-dev and xfaiss.
 
 | Submodule | Description |
 |-----------|-------------|
-| `xvector-dev` | Vector search library (libxvector-dev, libxcompute-dev) |
+| `xvector-dev` | Vector search library (libxvector-dev, libxarith-dev) |
 | `xfaiss` | XCENA-modified FAISS fork |
 
 ## Setup
@@ -30,7 +30,7 @@ git clone --recursive <repo-url>
 | `publish` | Deploy documentation to gh-pages |
 | `clean` | Remove `dist/build/` |
 
-**Targets:** `xvector`, `xcompute`, `xfaiss`, `all` (default)
+**Targets:** `xvector`, `xarith`, `xfaiss`, `all` (default)
 
 ## Examples
 
@@ -54,7 +54,7 @@ Each package follows semver (`MAJOR.MINOR.PATCH`) via VERSION files in submodule
 | Package | VERSION File |
 |---------|-------------|
 | xvector | `xvector-dev/VERSION` |
-| xcompute | `xvector-dev/VERSION_XCOMPUTE` |
+| xarith | `xvector-dev/VERSION_XARITH` |
 | xfaiss | `xfaiss/VERSION` |
 
 ## Release Workflow
@@ -64,7 +64,7 @@ Each package follows semver (`MAJOR.MINOR.PATCH`) via VERSION files in submodule
 | Scope | Tag Format | Repository |
 |-------|-----------|------------|
 | xvector | `xvector-v{version}` | xvector-dev |
-| xcompute | `xcompute-v{version}` | xvector-dev |
+| xarith | `xarith-v{version}` | xvector-dev |
 | xfaiss | `xfaiss-v{version}` | xfaiss |
 | suite | `release-{epoch}` | xvector-suite |
 
