@@ -180,22 +180,6 @@ read_xfaiss_version() {
     _UPSTREAM="${_UPSTREAM:-unknown}"
 }
 
-# Bump semver component: bump_semver <current_version> <type> → prints new version
-bump_semver() {
-    local version="$1"
-    local bump_type="$2"
-    local major minor patch
-    IFS='.' read -r major minor patch <<< "${version}"
-    major=${major:-0}; minor=${minor:-0}; patch=${patch:-0}
-
-    case "${bump_type}" in
-        major) echo "$((major + 1)).0.0" ;;
-        minor) echo "${major}.$((minor + 1)).0" ;;
-        patch) echo "${major}.${minor}.$((patch + 1))" ;;
-        *) log_error "Invalid bump type: ${bump_type}. Must be major, minor, or patch."; exit 1 ;;
-    esac
-}
-
 # Validate target argument
 validate_target() {
     local target="$1"
@@ -205,46 +189,10 @@ validate_target() {
     esac
 }
 
-# --- bump ---
-
-cmd_bump() {
-    local target="${1:-}"
-    local bump_type="${2:-}"
-
-    if [[ -z "${target}" || -z "${bump_type}" ]]; then
-        log_error "Usage: package.sh bump <target> <type>"
-        log_error "  target: xvector, xarith, xfaiss"
-        log_error "  type:   major, minor, patch"
-        exit 1
-    fi
-
-    resolve_target "${target}"
-    local version_file="${_TARGET_VERSION_FILE}"
-
-    case "${bump_type}" in
-        major|minor|patch) ;;
-        *) log_error "Invalid bump type: ${bump_type}. Must be major, minor, or patch."; exit 1 ;;
-    esac
-
-    # Read current version (first line)
-    read_version "${version_file}"
-    local current="${_VERSION}"
-    local new_version
-    new_version=$(bump_semver "${current}" "${bump_type}")
-
-    log_info "Bumping ${target}: ${current} -> ${new_version}"
-
-    if [[ "${target}" == "xfaiss" ]]; then
-        # Preserve upstream= line
-        read_xfaiss_version "${version_file}"
-        printf '%s\n' "${new_version}" "upstream=${_UPSTREAM}" > "${version_file}"
-    else
-        echo "${new_version}" > "${version_file}"
-    fi
-
-    log_info "Updated ${version_file}"
-    log_info "Don't forget to commit in the submodule and update xvector-suite."
-}
+# --- bump (moved to submodule scripts) ---
+# Version bumping is now handled by each submodule's own bump.sh:
+#   xvector-dev: ./scripts/bump.sh <xvector|xarith|all> <major|minor|patch> [--pr]
+#   xfaiss:      ./scripts/bump.sh <major|minor|patch> [--pr]
 
 # --- build ---
 
@@ -629,6 +577,18 @@ cmd_release() {
     local target="${1:-all}"
     validate_target "${target}"
 
+    # Verify gh CLI is authenticated (required for GitHub Release)
+    if ! command -v gh &>/dev/null; then
+        log_error "gh CLI is required for release. Install from https://cli.github.com/"
+        exit 1
+    fi
+    if ! gh auth status &>/dev/null; then
+        log_error "gh CLI is not authenticated. Run 'gh auth login' first."
+        log_error "Without authentication, artifacts cannot be uploaded to GitHub Releases."
+        exit 1
+    fi
+    log_info "gh CLI authenticated: $(gh auth status 2>&1 | grep 'Logged in' | head -1 | xargs)"
+
     # Check for uncommitted changes before starting
     if ! git -C "${SUITE_ROOT}" diff --quiet HEAD 2>/dev/null; then
         log_error "Uncommitted changes in xvector-suite. Please commit first."
@@ -983,9 +943,7 @@ Commands:
   docs-build [tag]   Build documentation with release-specific download paths
                      If tag is omitted, auto-detects latest release-* tag
   docs-preview       Preview built documentation locally (localhost:8000)
-  bump <target> <type>
-                     Bump version (major, minor, patch)
-                     Targets: xvector, xarith, xfaiss
+  bump               (Moved to submodule scripts — see below)
   release [target]   Tag + GitHub Release (requires prior build)
   docs-publish       Publish documentation to gh-pages
   clean              Remove build artifacts (dist/build/)
@@ -996,13 +954,15 @@ Targets:
   xfaiss     xfaiss source tarball
   all        All targets (default)
 
+Version bumping (now in submodule scripts):
+    cd xvector-dev && ./scripts/bump.sh xvector patch [--pr]
+    cd xfaiss && ./scripts/bump.sh minor [--pr]
+
 Examples:
     $(basename "$0") status
     $(basename "$0") build
     $(basename "$0") build xfaiss
     $(basename "$0") release all
-    $(basename "$0") bump xvector patch   # 0.1.0 -> 0.1.1
-    $(basename "$0") bump xfaiss minor    # 0.1.0 -> 0.2.0 (preserves upstream= line)
     $(basename "$0") sync                 # Update submodules to latest remote
     $(basename "$0") docs-build              # Build docs (auto-detect latest tag)
     $(basename "$0") docs-build release-1709512345  # Build docs with specific tag
@@ -1051,38 +1011,16 @@ interactive_menu() {
 
 interactive_bump() {
     echo ""
-    echo "  Target:"
-    echo "    1) xvector"
-    echo "    2) xarith"
-    echo "    3) xfaiss"
+    log_info "Version bumping has moved to each submodule:"
     echo ""
-    local target_choice
-    read -rp "  Select target [1-3]: " target_choice
-    local target
-    case "${target_choice}" in
-        1) target="xvector" ;;
-        2) target="xarith" ;;
-        3) target="xfaiss" ;;
-        *) log_error "Invalid target"; exit 1 ;;
-    esac
-
+    echo "  xvector-dev (xvector/xarith):"
+    echo "    cd xvector-dev && ./scripts/bump.sh <xvector|xarith|all> <major|minor|patch> [--pr]"
     echo ""
-    echo "  Bump type:"
-    echo "    1) patch  (0.1.0 -> 0.1.1)"
-    echo "    2) minor  (0.1.0 -> 0.2.0)"
-    echo "    3) major  (0.1.0 -> 1.0.0)"
+    echo "  xfaiss:"
+    echo "    cd xfaiss && ./scripts/bump.sh <major|minor|patch> [--pr]"
     echo ""
-    local type_choice
-    read -rp "  Select type [1-3]: " type_choice
-    local bump_type
-    case "${type_choice}" in
-        1) bump_type="patch" ;;
-        2) bump_type="minor" ;;
-        3) bump_type="major" ;;
-        *) log_error "Invalid bump type"; exit 1 ;;
-    esac
-
-    cmd_bump "${target}" "${bump_type}"
+    echo "  Use --pr to automatically create a branch and open a GitHub PR."
+    echo ""
 }
 
 interactive_build() {
@@ -1137,7 +1075,7 @@ main() {
         status)  cmd_status "$@" ;;
         build)   verify_submodule_commits; cmd_build "$@" ;;
         release) verify_submodule_commits; cmd_release "$@" ;;
-        bump)    cmd_bump "$@" ;;
+        bump)    interactive_bump ;;
         sync)    cmd_sync "$@" ;;
         docs-build)    cmd_docs_build "$@" ;;
         docs-preview)  cmd_docs_preview "$@" ;;
