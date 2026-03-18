@@ -1,0 +1,23 @@
+{
+  "date": "20260318",
+  "suite_commit": "03b8bced62fce01d780bd0b875429e941aa77991",
+  "xvector": {
+    "version": "0.1.1",
+    "git_hash": "1cc22cbb35422998a278e8c69f16a323b92d2d6d"
+  },
+  "xarith": {
+    "version": "0.1.1",
+    "git_hash": "1cc22cbb35422998a278e8c69f16a323b92d2d6d"
+  },
+  "xfaiss": {
+    "version": "0.1.1",
+    "git_hash": "bd38d72b2009100ae7eb6323394ee60c9163496f"
+  },
+  "artifacts": [
+    "libxarith-dev_0.1.1_amd64.deb",
+    "libxvector-dev_0.1.1_amd64.deb",
+    "xarith-examples-0.1.1.tar.gz",
+    "xfaiss-0.1.1+faiss1.13.0-source.tar.gz",
+    "xvector-suite-0.1.1-dist.tar.gz"
+  ]
+}
