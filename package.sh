@@ -275,11 +275,8 @@ cmd_build() {
         steps+=("Build xvector-dev (clean release)");      step_funcs+=("_pkg_build_xvector")
         steps+=("Create Debian packages");                 step_funcs+=("package_deb")
     fi
-    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
-        steps+=("Create xvector examples tarball");      step_funcs+=("package_xvector_examples")
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xarith" ]]; then
-        steps+=("Create xarith examples tarball");       step_funcs+=("package_examples")
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xarith" ]]; then
+        steps+=("Create examples tarballs");             step_funcs+=("package_examples")
     fi
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         steps+=("Create xfaiss source archive");           step_funcs+=("package_xfaiss")
@@ -320,37 +317,11 @@ package_deb() {
 }
 
 package_examples() {
-    log_info "Creating xarith examples tarball..."
+    log_info "Creating examples tarballs..."
     if ! "${PACKAGING_SH}" examples --output "${BUILD_DIR}"; then
-        log_error "Examples tarball creation failed"
+        log_error "Examples tarballs creation failed"
         exit 1
     fi
-}
-
-package_xvector_examples() {
-    read_version "${XVECTOR_VERSION_FILE}"
-    local version="${_VERSION}"
-    local tarball_name="xvector-examples-${version}.tar.gz"
-    local source_dir="${XVECTOR_DIR}/examples/xvector_usage"
-
-    if [[ ! -d "${source_dir}" ]]; then
-        log_error "Examples directory not found: ${source_dir}"
-        exit 1
-    fi
-
-    log_info "Creating ${tarball_name}..."
-
-    local temp_dir
-    temp_dir=$(mktemp -d)
-    local package_dir="${temp_dir}/xvector-examples-${version}"
-
-    mkdir -p "${package_dir}"
-    rsync -a --exclude='build/' "${source_dir}/" "${package_dir}/"
-
-    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${temp_dir}" "xvector-examples-${version}"
-    rm -rf "${temp_dir}"
-
-    log_info "Created: ${tarball_name}"
 }
 
 package_xfaiss() {
