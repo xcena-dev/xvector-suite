@@ -328,11 +328,29 @@ package_examples() {
 }
 
 package_xvector_examples() {
-    log_info "Creating xvector examples tarball..."
-    if ! "${PACKAGING_SH}" xvector-examples --output "${BUILD_DIR}"; then
-        log_error "Xvector examples tarball creation failed"
+    read_version "${XVECTOR_VERSION_FILE}"
+    local version="${_VERSION}"
+    local tarball_name="xvector-examples-${version}.tar.gz"
+    local source_dir="${XVECTOR_DIR}/examples/xvector_usage"
+
+    if [[ ! -d "${source_dir}" ]]; then
+        log_error "Examples directory not found: ${source_dir}"
         exit 1
     fi
+
+    log_info "Creating ${tarball_name}..."
+
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    local package_dir="${temp_dir}/xvector-examples-${version}"
+
+    mkdir -p "${package_dir}"
+    rsync -a --exclude='build/' "${source_dir}/" "${package_dir}/"
+
+    tar -czf "${BUILD_DIR}/${tarball_name}" -C "${temp_dir}" "xvector-examples-${version}"
+    rm -rf "${temp_dir}"
+
+    log_info "Created: ${tarball_name}"
 }
 
 package_xfaiss() {
