@@ -516,12 +516,7 @@ tag_push_and_release() {
         log_error "Dist tarball not found: ${dist_tarball}"
         exit 1
     fi
-    # Also upload xvector examples tarball as a standalone artifact
-    local xvector_examples="${_RELEASE_DIR}/xvector-examples-${_VERSION}.tar.gz"
     local release_files=("${dist_tarball}" "${_RELEASE_DIR}/manifest.json")
-    if [[ -f "${xvector_examples}" ]]; then
-        release_files+=("${xvector_examples}")
-    fi
 
     local release_body
     release_body=$(cat <<GHEOF
