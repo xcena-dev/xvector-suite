@@ -275,6 +275,9 @@ cmd_build() {
         steps+=("Build xvector-dev (clean release)");      step_funcs+=("_pkg_build_xvector")
         steps+=("Create Debian packages");                 step_funcs+=("package_deb")
     fi
+    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
+        steps+=("Create xvector examples tarball");      step_funcs+=("package_xvector_examples")
+    fi
     if [[ "${target}" == "all" || "${target}" == "xarith" ]]; then
         steps+=("Create xarith examples tarball");       step_funcs+=("package_examples")
     fi
@@ -320,6 +323,14 @@ package_examples() {
     log_info "Creating xarith examples tarball..."
     if ! "${PACKAGING_SH}" examples --output "${BUILD_DIR}"; then
         log_error "Examples tarball creation failed"
+        exit 1
+    fi
+}
+
+package_xvector_examples() {
+    log_info "Creating xvector examples tarball..."
+    if ! "${PACKAGING_SH}" xvector-examples --output "${BUILD_DIR}"; then
+        log_error "Xvector examples tarball creation failed"
         exit 1
     fi
 }
@@ -516,7 +527,12 @@ tag_push_and_release() {
         log_error "Dist tarball not found: ${dist_tarball}"
         exit 1
     fi
+    # Also upload xvector examples tarball as a standalone artifact
+    local xvector_examples="${_RELEASE_DIR}/xvector-examples-${_VERSION}.tar.gz"
     local release_files=("${dist_tarball}" "${_RELEASE_DIR}/manifest.json")
+    if [[ -f "${xvector_examples}" ]]; then
+        release_files+=("${xvector_examples}")
+    fi
 
     local release_body
     release_body=$(cat <<GHEOF
@@ -753,12 +769,13 @@ _build_dist_tarball() {
     local deb_xvector="libxvector-dev_${xv_ver}_amd64.deb"
     local deb_xarith="libxarith-dev_${xc_ver}_amd64.deb"
     local tar_xfaiss="xfaiss-${xf_ver}+faiss${upstream_short}-source.tar.gz"
-    local tar_examples="xarith-examples-${xc_ver}.tar.gz"
+    local tar_xarith_examples="xarith-examples-${xc_ver}.tar.gz"
+    local tar_xvector_examples="xvector-examples-${xv_ver}.tar.gz"
 
     # Validate artifacts
     local missing=0
     for artifact in "${deb_xvector}" "${deb_xarith}" "${tar_xfaiss}" \
-                    "${tar_examples}"; do
+                    "${tar_xarith_examples}" "${tar_xvector_examples}"; do
         if [[ ! -f "${BUILD_DIR}/${artifact}" ]]; then
             log_error "Missing artifact: ${BUILD_DIR}/${artifact}"
             missing=1
@@ -784,10 +801,11 @@ _build_dist_tarball() {
     mkdir -p "${staging_dir}"
 
     # Copy artifacts and setup.sh into staging directory
-    cp "${BUILD_DIR}/${deb_xvector}"       "${staging_dir}/"
-    cp "${BUILD_DIR}/${deb_xarith}"      "${staging_dir}/"
-    cp "${BUILD_DIR}/${tar_xfaiss}"        "${staging_dir}/"
-    cp "${BUILD_DIR}/${tar_examples}"      "${staging_dir}/"
+    cp "${BUILD_DIR}/${deb_xvector}"           "${staging_dir}/"
+    cp "${BUILD_DIR}/${deb_xarith}"          "${staging_dir}/"
+    cp "${BUILD_DIR}/${tar_xfaiss}"            "${staging_dir}/"
+    cp "${BUILD_DIR}/${tar_xarith_examples}"   "${staging_dir}/"
+    cp "${BUILD_DIR}/${tar_xvector_examples}"  "${staging_dir}/"
     cp "${SUITE_ROOT}/installer/setup.sh"   "${staging_dir}/"
     chmod +x "${staging_dir}/setup.sh"
 
