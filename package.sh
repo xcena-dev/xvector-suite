@@ -275,11 +275,8 @@ cmd_build() {
         steps+=("Build xvector-dev (clean release)");      step_funcs+=("_pkg_build_xvector")
         steps+=("Create Debian packages");                 step_funcs+=("package_deb")
     fi
-    if [[ "${target}" == "all" || "${target}" == "xvector" ]]; then
-        steps+=("Create xvector examples tarball");      step_funcs+=("package_xvector_examples")
-    fi
-    if [[ "${target}" == "all" || "${target}" == "xarith" ]]; then
-        steps+=("Create xarith examples tarball");       step_funcs+=("package_examples")
+    if [[ "${target}" == "all" || "${target}" == "xvector" || "${target}" == "xarith" ]]; then
+        steps+=("Create examples tarballs");             step_funcs+=("package_examples")
     fi
     if [[ "${target}" == "all" || "${target}" == "xfaiss" ]]; then
         steps+=("Create xfaiss source archive");           step_funcs+=("package_xfaiss")
@@ -320,17 +317,9 @@ package_deb() {
 }
 
 package_examples() {
-    log_info "Creating xarith examples tarball..."
+    log_info "Creating examples tarballs..."
     if ! "${PACKAGING_SH}" examples --output "${BUILD_DIR}"; then
-        log_error "Examples tarball creation failed"
-        exit 1
-    fi
-}
-
-package_xvector_examples() {
-    log_info "Creating xvector examples tarball..."
-    if ! "${PACKAGING_SH}" xvector-examples --output "${BUILD_DIR}"; then
-        log_error "Xvector examples tarball creation failed"
+        log_error "Examples tarballs creation failed"
         exit 1
     fi
 }
