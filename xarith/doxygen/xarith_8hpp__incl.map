@@ -1,0 +1,10 @@
+<map id="libs/arith/include/xarith/xarith.hpp" name="libs/arith/include/xarith/xarith.hpp">
+<area shape="rect" id="Node000001" title="Master include header for the xarith library." alt="" coords="47,5,182,45"/>
+<area shape="rect" id="Node000002" href="$vpe__types_8hpp.html" title=" " alt="" coords="5,167,123,192"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="109,47,92,94,73,154,68,152,87,92,104,45"/>
+<area shape="rect" id="Node000003" href="$vpe__context_8hpp.html" title=" " alt="" coords="101,93,232,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="129,44,154,80,149,83,125,47"/>
+<area shape="poly" id="edge4_Node000003_Node000002" title=" " alt="" coords="152,121,94,161,91,156,149,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="146,167,217,192"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="172,118,179,153,174,154,166,120"/>
+</map>

@@ -1,0 +1,212 @@
+{"0": {
+    "doc": "Changelog",
+    "title": "Changelog",
+    "content": "All notable changes to XVector will be documented in this page. ",
+    "url": "/xvector-suite/xvector/changelog.html",
+    
+    "relUrl": "/changelog.html"
+  },"1": {
+    "doc": "Changelog",
+    "title": "[0.1.1] - 2026-03-19",
+    "content": "Minimum SDK Requirement: 1.4.4 . Added . | Support KNN Exact Search as an index type | . Changed . | Upgrade to SDK 1.4.4 with stability improvements | Enhance examples with improved RAII, error handling, and robustness | Update XArith examples | . Fixed . | More efficient resource handling in IVF-Flat kernel | . ",
+    "url": "/xvector-suite/xvector/changelog.html#011---2026-03-19",
+    
+    "relUrl": "/changelog.html#011---2026-03-19"
+  },"2": {
+    "doc": "Changelog",
+    "title": "[0.1.0] - 2026-03-05",
+    "content": "Initial release. ",
+    "url": "/xvector-suite/xvector/changelog.html#010---2026-03-05",
+    
+    "relUrl": "/changelog.html#010---2026-03-05"
+  },"3": {
+    "doc": "Examples",
+    "title": "Examples",
+    "content": "Code examples demonstrating XVector library usage via the public C API. XVector provides two ways to run vector search on MX1: . | Approach | Description | When to Use | . | XVector C API (this page) | Direct C API for KNN exact search | Custom applications, fine-grained control | . | XFaiss | Drop-in Faiss replacement with MU acceleration | Existing Faiss workflows, IVF indexes | . ",
+    "url": "/xvector-suite/xvector/examples.html",
+    
+    "relUrl": "/examples.html"
+  },"4": {
+    "doc": "Examples",
+    "title": "KNN Exact Search",
+    "content": "The xvector-examples package includes a complete KNN example that demonstrates exact nearest neighbor search using the XVector C API. Compared to the raw XArith/PXL approach, XVector handles device kernel loading, data partitioning, task scheduling, and result merging internally: . | Aspect | XArith/PXL (raw) | XVector C API | . | Device kernel | Write and compile manually | Built-in | . | Memory management | Manual PXL alloc/free | xvecCreateBuffer / xvecDestroyBuffer | . | Data partitioning | Manual NDArray setup | Automatic | . | Result merging | Manual per-task merge | Automatic | . | API style | C++ (PXL + device headers) | Pure C (xvec_*.h) | . Build . Extract and build the example: . tar -xzf xvector-examples-0.1.1.tar.gz cd xvector-examples-0.1.1/knn mkdir build &amp;&amp; cd build cmake .. make . If xvector is not installed at the default path (/opt/xvector), specify the install location: . cmake -DCMAKE_PREFIX_PATH=/path/to/xvector .. The CMake configuration is minimal — find_package(xvector) and link against xvector::xvector: . cmake_minimum_required(VERSION 3.11) project(xvector_knn_example VERSION 1.0.0 LANGUAGES CXX) set(CMAKE_CXX_STANDARD 17) set(CMAKE_CXX_STANDARD_REQUIRED ON) find_package(xvector REQUIRED) add_executable(knn_xvector main.cpp) target_link_libraries(knn_xvector PRIVATE xvector::xvector) . Run ./knn_xvector # run with defaults ./knn_xvector --dim 128 --vectors 1000000 --k 10 # custom parameters . The mubin kernel binary is auto-detected from &lt;exe_dir&gt;/bin/, &lt;exe_dir&gt;/../bin/, or /opt/xvector/bin/. Options: . | Option | Default | Description | . | --dim N | 1024 | Vector dimension | . | --vectors N | 100000 | Number of dataset vectors | . | --queries N | 10 | Number of query vectors | . | --k N | 5 | Number of nearest neighbors | . | --dist l2\\|ip\\|all | all | Distance metric | . Environment Variables: . | Variable | Default | Description | . | XVECTOR_MUBIN_PATH | (auto) | Path to xvector_kernel.mubin | . | DEVICEID | 0 | Device ID | . | NUMSUB | 24 | Number of subsystems | . | TASKCOUNT | 192 | Task count for parallelism | . Sample Output . XVector KNN Example Config: dim=1024 vectors=100000 queries=10 k=5 numSub=24 taskCount=192 Generating random test data... done KNN L2 Test (vectors=100000, queries=10, dim=1024, k=5) [xvector] Index loaded: ... [xvector] Search: ... KNN DOT_PRODUCT Test (vectors=100000, queries=10, dim=1024, k=5) [xvector] Index loaded: ... [xvector] Search: ... Code Walkthrough . The full example (main.cpp) follows a straightforward flow: create context, load data, search, read results. Headers . #include &lt;xvector/xvec_buffer.h&gt; #include &lt;xvector/xvec_context.h&gt; #include &lt;xvector/xvec_knn_exact.h&gt; #include &lt;xvector/xvec_types.h&gt; . 1. Create Execution Context . The execution context connects to the MX1 device and loads the built-in kernel binary: . xvecExecutionContextTag* ctx = nullptr; xvecStatus status = xvecCreateContext(&amp;ctx, deviceId, mubinPath); if (status != XVEC_SUCCESS) { // handle error } // Configure parallelism xvecSetContextProperty(ctx, \"numSub\", \"24\"); xvecSetContextProperty(ctx, \"taskCount\", \"192\"); . For RAII-style resource management, wrap handles in std::unique_ptr with custom deleters. See the full example for ContextDeleter, BufferDeleter, and KnnExactIndexDeleter patterns. 2. Load Index from Raw Vectors . Load a dataset of float32 vectors into a KNN exact index: . xvecKnnExactIndexTag* index = nullptr; xvecKnnExactLoadIndexFromRawVectors( ctx, dataset, // const float* — contiguous float32 array vectorCount, // number of vectors dim, // vector dimension XVEC_DISTANCE_L2, // or XVEC_DISTANCE_DOT_PRODUCT &amp;index); . 3. Prepare Query Vectors . Create a buffer and copy query vectors into it: . size_t queryBufSize = sizeof(float) * queryCount * dim; xvecBufferTag* queryBuf = nullptr; xvecCreateBuffer(ctx, queryBufSize, &amp;queryBuf); void* queryData = nullptr; xvecGetBufferData(queryBuf, &amp;queryData); memcpy(queryData, queryVectors, queryBufSize); . 4. Execute Search . Build the search query and execute: . xvecKnnExactSearchQueryFloat32 searchQuery{}; searchQuery.dimension = dim; searchQuery.queryVectorCount = queryCount; searchQuery.queryVectorsBufferHandle = queryBuf; searchQuery.topK = k; // Allocate result buffer size_t resultBufSize = sizeof(xvecKnnExactSearchResultFloat32) * queryCount * k; xvecBufferTag* resultBuf = nullptr; xvecCreateBuffer(ctx, resultBufSize, &amp;resultBuf); // Run search xvecKnnExactSearch(ctx, index, &amp;searchQuery, resultBuf, nullptr); . 5. Cleanup . Destroy resources in reverse order: . xvecDestroyBuffer(ctx, resultBuf); xvecDestroyBuffer(ctx, queryBuf); xvecKnnExactDestroyIndex(ctx, index); xvecDestroyContext(ctx); . ",
+    "url": "/xvector-suite/xvector/examples.html#knn-exact-search",
+    
+    "relUrl": "/examples.html#knn-exact-search"
+  },"5": {
+    "doc": "Examples",
+    "title": "Next Steps",
+    "content": ". | XFaiss — Faiss drop-in replacement for IVF-Flat, IVF-RaBitQ, and Flat indexes | XVector API Reference — Full C API reference | . ",
+    "url": "/xvector-suite/xvector/examples.html#next-steps",
+    
+    "relUrl": "/examples.html#next-steps"
+  },"6": {
+    "doc": "Getting Started",
+    "title": "Getting Started",
+    "content": "This guide walks you through installing XVector and running your first vector search. ",
+    "url": "/xvector-suite/xvector/getting-started.html",
+    
+    "relUrl": "/getting-started.html"
+  },"7": {
+    "doc": "Getting Started",
+    "title": "Prerequisites",
+    "content": ". | Ubuntu 24.04 | XCENA SDK — PXL runtime for device offloading | . ",
+    "url": "/xvector-suite/xvector/getting-started.html#prerequisites",
+    
+    "relUrl": "/getting-started.html#prerequisites"
+  },"8": {
+    "doc": "Getting Started",
+    "title": "Installation",
+    "content": "From Release Tarball (Recommended) . Download the release tarball and run the included setup script: . wget https://github.com/xcena-dev/xvector-suite/releases/download/release-1773911764/xvector-suite-0.1.1-dist.tar.gz tar xzf xvector-suite-0.1.1-dist.tar.gz cd xvector-suite-0.1.1 ./setup.sh . Manual Installation . The tarball contains individual .deb packages that can be installed directly: . sudo dpkg -i libxvector-dev_0.1.1_amd64.deb . libxvector-dev installs: . | Path | Contents | . | /opt/xvector/include/xvector/ | Public C headers | . | /opt/xvector/include/xvector_cpp/ | C++ convenience wrapper headers | . | /opt/xvector/lib/ | libxvector.a static library and CMake config | . | /opt/xvector/bin/ | Device kernel binary (xvector_kernel.mubin) | . ",
+    "url": "/xvector-suite/xvector/getting-started.html#installation",
+    
+    "relUrl": "/getting-started.html#installation"
+  },"9": {
+    "doc": "Getting Started",
+    "title": "Next Steps",
+    "content": ". | XFaiss — Faiss drop-in replacement with MU acceleration | Examples — KNN exact search with the XVector C API | . ",
+    "url": "/xvector-suite/xvector/getting-started.html#next-steps",
+    
+    "relUrl": "/getting-started.html#next-steps"
+  },"10": {
+    "doc": "Home",
+    "title": "Overview",
+    "content": "XVector is a high-performance vector search library for XCENA’s Computational Memory (MX1). It offloads compute-intensive approximate nearest neighbor (ANN) search to the device, delivering high throughput for large-scale vector workloads. ",
+    "url": "/xvector-suite/xvector/#overview",
+    
+    "relUrl": "/#overview"
+  },"11": {
+    "doc": "Home",
+    "title": "Supported Algorithms",
+    "content": "| Algorithm | Description | Use Case | . | IVF-Flat | Inverted file index with exact distance computation | Best accuracy within IVF family | . | IVF-RaBitQ | Inverted file index with randomized binary quantization | Ultra-compact, fast approximate search | . | KNN Exact (Flat) | Brute-force exact nearest neighbor search | 100% recall ground-truth and small-to-medium datasets | . ",
+    "url": "/xvector-suite/xvector/#supported-algorithms",
+    
+    "relUrl": "/#supported-algorithms"
+  },"12": {
+    "doc": "Home",
+    "title": "Key Features",
+    "content": ". | Device-accelerated search – Runs ANN search on MX1 via PXL runtime | Faiss drop-in replacement – Swap to XFaiss to accelerate search on MX1 with existing .faiss index files | . See Getting Started to install XVector and run your first search. ",
+    "url": "/xvector-suite/xvector/#key-features",
+    
+    "relUrl": "/#key-features"
+  },"13": {
+    "doc": "Home",
+    "title": "Home",
+    "content": " ",
+    "url": "/xvector-suite/xvector/",
+    
+    "relUrl": "/"
+  },"14": {
+    "doc": "Benchmark Reference",
+    "title": "Benchmark Reference",
+    "content": "Preset and option reference for the ./xfaiss.sh bench command./xfaiss.sh bench &lt;preset&gt; [options...] . ",
+    "url": "/xvector-suite/xvector/xfaiss-benchmark-reference.html",
+    
+    "relUrl": "/xfaiss-benchmark-reference.html"
+  },"15": {
+    "doc": "Benchmark Reference",
+    "title": "Presets",
+    "content": "IVF-Flat . | Preset | Description | . | flat-sift1m | IVF-Flat on SIFT-1M | . | flat-gist1m | IVF-Flat on GIST-1M | . | flat-sift100m | IVF-Flat on SIFT-100M | . | flat-deep100m | IVF-Flat on Deep-100M | . | flat-7m-d1024-l2-query-fixed | IVF-Flat on 7M-d1024 (L2, Query-Fixed) | . | flat-7m-d1024-l2-cluster-fixed | IVF-Flat on 7M-d1024 (L2, Cluster-Fixed) [experimental] | . | flat-7m-d1024-ip-query-fixed | IVF-Flat on 7M-d1024 (IP, Query-Fixed) | . | flat-7m-d1024-ip-cluster-fixed | IVF-Flat on 7M-d1024 (IP, Cluster-Fixed) [experimental] | . | flat-fullscan-sift1m | IVF-Flat full scan (nprobe=nlist) on SIFT-1M | . | flat-fullscan-gist1m | IVF-Flat full scan (nprobe=nlist) on GIST-1M | . IVF-RaBitQ . | Preset | Description | . | rabitq-sift1m | IVF-RaBitQ on SIFT-1M | . | rabitq-gist1m | IVF-RaBitQ on GIST-1M | . | rabitq-sift100m | IVF-RaBitQ on SIFT-100M | . | rabitq-deep100m | IVF-RaBitQ on Deep-100M | . KNN Exact . | Preset | Description | . | knn-exact-sift1m | KNN Exact (MuIndexFlat) on SIFT-1M | . | knn-exact-gist1m | KNN Exact (MuIndexFlat) on GIST-1M | . ",
+    "url": "/xvector-suite/xvector/xfaiss-benchmark-reference.html#presets",
+    
+    "relUrl": "/xfaiss-benchmark-reference.html#presets"
+  },"16": {
+    "doc": "Benchmark Reference",
+    "title": "Options",
+    "content": "Data . | Option | Argument | Description | Default | . | --data-dir | DIR | Root data directory | /var/opt/xvector-data | . | --index | PATH | Index path override (IVF presets) | preset default | . | --base | PATH | Base vectors path override (KNN Exact presets) | preset default | . | --query | PATH | Query path override | preset default | . | --groundtruth-path | PATH | Ground-truth path override | preset default | . Search . | Option | Argument | Description | Default | . | --nprobe | N | Number of probes (IVF only) | 128 | . | --topk | N | Top-k results | 100 | . | --skip-cpu | (flag) | Skip CPU benchmark | off | . | --max-queries | N | Query count limit | all | . | --random-queries | N | Random query count | preset default | . | --search-iterations-on-mu | N | Repeat MU search N times | 1 | . | --search-iterations-on-cpu | N | Repeat CPU search N times | 1 | . Search — IVF-Flat . | Option | Argument | Description | Default | . | --flat-parallel-mode | M | MU parallel mode | preset default | . --flat-parallel-mode values: . | 1 — QUERY_FIXED | 2 — CLUSTER_LIST_FIXED — moves the query loop to inner to reduce the amount of memory transfer | . Search — IVF-RaBitQ . | Option | Argument | Description | Default | . | --rabitq-centered | (flag) | Centered quantization | on | . | --rabitq-qb | VALUES | qb values (e.g. 0,4,8 or 2-5) | 0-8 (full sweep) | . qb is the number of bits used to quantize the query vector. 0 disables query quantization (uses the original float query); higher values quantize the query into more bitplanes, improving recall at the cost of additional computation. Search — KNN Exact . | Option | Argument | Description | Default | . | --metric | M | Distance metric (L2 or IP) | L2 | . Device . | Option | Argument | Description | Default | . | --deviceid | ID | Device ID | 0 | . | --numsub | N | Number of sub systems | 24 | . | --taskcount | N | Task count | preset default | . | --locality-mode | M | Locality mode: 0 = COMPACT, 1 = SPREAD | 1 (SPREAD) | . --locality-mode controls how the runtime schedules tasks across sub systems: . | 0: COMPACT — cluster-first allocation (intra-sub). Packs tasks onto fewer clusters within a sub before moving to the next. | 1: SPREAD — sub-first allocation (inter-sub). Distributes tasks across all subs before filling any single sub. | . | Option | Argument | Description | Default | . | --xvector-mubin-path | PATH | Mubin path | /opt/xvector/bin/xvector_kernel.mubin | . CPU / Host . | Option | Argument | Description | Default | . | --numa-cpubind | NODE | NUMA CPU bind node (empty = no numactl) | 0 | . | --numa-membind | NODE | NUMA memory bind node | 0 | . | --gdb | (flag) | Run under gdb batch mode | off | . ",
+    "url": "/xvector-suite/xvector/xfaiss-benchmark-reference.html#options",
+    
+    "relUrl": "/xfaiss-benchmark-reference.html#options"
+  },"17": {
+    "doc": "Quick Start",
+    "title": "Quick Start",
+    "content": "XFaiss provides a ./xfaiss.sh script for building, data preparation, and benchmarking with predefined configurations: . | Step | Command | Description | . | Build | ./xfaiss.sh build | Build XFaiss library including tutorials and benchmarks | . | Prepare Data | ./xfaiss.sh prepare-data-tui | Prepare dataset and index files (TUI) | . |   | ./xfaiss.sh prepare-data [options] | Prepare dataset and index files (CLI) | . | Benchmark | ./xfaiss.sh bench-tui | Run search benchmark (TUI) | . |   | ./xfaiss.sh bench &lt;preset&gt; [options] | Run search benchmark (CLI, see Benchmark Reference) | . ",
+    "url": "/xvector-suite/xvector/xfaiss-quick-start.html",
+    
+    "relUrl": "/xfaiss-quick-start.html"
+  },"18": {
+    "doc": "Quick Start",
+    "title": "Prepare Data",
+    "content": "prepare-data downloads public benchmark datasets, converts formats, and builds Faiss indexes. prepare-data-tui provides the same functionality with an interactive TUI. Datasets . | Dataset | Dimension | Vectors | Metric | Download Size | . | sift1m | 128 | 1M | L2 | ~500MB | . | gist1m | 960 | 1M | L2 | ~4GB | . | sift100m | 128 | 100M | L2 | ~49GB | . | deep100m | 96 | 100M | L2 | ~358GB | . | 7m-d1024-l2 | 1024 | 7M | L2 | generated | . | 7m-d1024-ip | 1024 | 7M | IP | generated | . Pipeline . | Download — fetch datasets from public sources (IRISA FTP, Yandex Cloud) | Convert — format conversion (bvecs/fbin → fvecs) | Build — create IVF-Flat and IVF-RaBitQ indexes (nlist=4096) | Cleanup — remove base vectors to save space (unless --keep-raw) | . Output: . {data_dir}/benchmark_indexes/{dataset}/ ├── {dataset}.ivf_flat_nlist4096.faiss ├── {dataset}.ivf_rabitq_nlist4096.faiss ├── query.fvecs └── groundtruth.ivecs . CLI Options ./xfaiss.sh prepare-data --data-dir &lt;dir&gt; [options...] . | Option | Description | Default | . | --data-dir &lt;dir&gt; | Root data directory | (required) | . | --datasets &lt;list&gt; | Comma-separated dataset names | all | . | --skip-download | Skip download step (use existing raw files) | off | . | --skip-build | Skip index build (download/convert only) | off | . | --keep-raw | Keep raw downloaded files after building | off | . | --nlist &lt;n&gt; | Number of IVF clusters | 4096 | . TUI . prepare-data-tui opens a TUI to select datasets for download and index generation: . $ ./xfaiss.sh prepare-data-tui Select datasets (space to toggle, enter to confirm): ✓ sift1m SIFT 1M (128-dim, ~500MB download) • gist1m GIST 1M (960-dim, ~4GB download) • sift100m SIFT 100M / BigANN (128-dim, 1B raw ~49GB download) • deep100m Deep 100M (96-dim, 1B raw ~358GB download) ✓ 7m-d1024-l2 Synthetic 7M (1024-dim, L2, generated) &gt; ✓ 7m-d1024-ip Synthetic 7M (1024-dim, IP, generated) . ",
+    "url": "/xvector-suite/xvector/xfaiss-quick-start.html#prepare-data",
+    
+    "relUrl": "/xfaiss-quick-start.html#prepare-data"
+  },"19": {
+    "doc": "Quick Start",
+    "title": "Benchmark",
+    "content": "bench-tui opens a TUI to select a benchmark preset and configure parameters: . 1. Select benchmark preset: . $ ./xfaiss.sh bench-tui Select benchmark preset: &gt; flat-sift1m IVF-Flat on SIFT-1M flat-gist1m IVF-Flat on GIST-1M flat-sift100m IVF-Flat on SIFT-100M flat-deep100m IVF-Flat on Deep-100M flat-7m-d1024-l2-query-fixed IVF-Flat on 7M-d1024 (L2, Query-Fixed) flat-7m-d1024-l2-cluster-fixed IVF-Flat on 7M-d1024 (L2, Cluster-Fixed) [experimental] flat-7m-d1024-ip-query-fixed IVF-Flat on 7M-d1024 (IP, Query-Fixed) flat-7m-d1024-ip-cluster-fixed IVF-Flat on 7M-d1024 (IP, Cluster-Fixed) [experimental] rabitq-sift1m IVF-RaBitQ on SIFT-1M rabitq-gist1m IVF-RaBitQ on GIST-1M rabitq-sift100m IVF-RaBitQ on SIFT-100M rabitq-deep100m IVF-RaBitQ on Deep-100M . 2. Review configurations and run: . Preset: flat-sift1m &gt; ── Data ──────────────────────── DATA_DIR /var/opt/xvector-data ── Search ────────────────────── NPROBE 128 TOPK 100 SKIP_CPU no MAX_QUERIES (all) RANDOM_QUERIES (preset default) SEARCH_ITERATIONS_ON_MU (1) SEARCH_ITERATIONS_ON_CPU (1) ── Search (IVF-Flat) ─────────── FLAT_PARALLEL_MODE 1 (QUERY_FIXED) ── Device ────────────────────── DEVICEID 0 NUMSUB 24 TASKCOUNT 192 LOCALITY_MODE 1 (SPREAD) ── CPU / Host ────────────────── NUMA_CPUBIND 0 NUMA_MEMBIND 0 OMP_NUM_THREADS 64 OPENBLAS_NUM_THREADS 1 GDB no ──────────────────────────────── &gt;&gt;&gt; Run benchmark &lt;&lt;&lt; Change preset . ",
+    "url": "/xvector-suite/xvector/xfaiss-quick-start.html#benchmark",
+    
+    "relUrl": "/xfaiss-quick-start.html#benchmark"
+  },"20": {
+    "doc": "Quick Start",
+    "title": "Next Steps",
+    "content": ". | Tutorial — MU-accelerated index usage with code examples | Benchmark Reference — Preset and option reference for bench | . ",
+    "url": "/xvector-suite/xvector/xfaiss-quick-start.html#next-steps",
+    
+    "relUrl": "/xfaiss-quick-start.html#next-steps"
+  },"21": {
+    "doc": "Tutorial",
+    "title": "Tutorial",
+    "content": "XFaiss works as a drop-in replacement for Faiss — only three changes are needed: . | Initialize MU resources — makeMuResources() | Use the MU index class — e.g., MuIndexIvfFlat instead of IndexIVFFlat | Sync to device before search — syncToMuDevice() | . Source files are in the xfaiss_tutorial/ directory of the XFaiss repository. All examples share a common utility header (TutorialUtils.h) for data generation, timing, and output formatting. ",
+    "url": "/xvector-suite/xvector/xfaiss-tutorial.html",
+    
+    "relUrl": "/xfaiss-tutorial.html"
+  },"22": {
+    "doc": "Tutorial",
+    "title": "IVF-Flat",
+    "content": "xfaiss_tutorial/1-MuIVFFlat.cpp . #include \"TutorialUtils.h\" #include &lt;cassert&gt; #include &lt;faiss/IndexFlat.h&gt; #include &lt;faiss/impl/FaissException.h&gt; #include &lt;faiss/mu/MuIndexIvfFlat.h&gt; #include &lt;faiss/mu/MuResources.h&gt; int main() { try { size_t d = 128; size_t nb = 1000000; size_t nq = 100; size_t nlist = 100; size_t nprobe = 10; size_t k = 5; auto data = prepareData(d, nb, nq); faiss::IndexFlatL2 quantizer(data.d); auto config = faiss::MuResourcesConfig::fromConfigManager(); config.taskCount = 192; auto resources = faiss::makeMuResources(config); faiss::MuIndexIvfFlat index(resources, &amp;quantizer, data.d, nlist); assert(!index.is_trained); double train_ms = measureMs([&amp;] { index.train(data.nb, data.xb.get()); }); assert(index.is_trained); double add_ms = measureMs([&amp;] { index.add(data.nb, data.xb.get()); }); double sync_ms = measureMs([&amp;] { index.syncToMuDevice(); }); index.nprobe = nprobe; auto I = std::make_unique&lt;idx_t[]&gt;(k * data.nq); auto D = std::make_unique&lt;float[]&gt;(k * data.nq); double search_ms = measureMs([&amp;] { index.search(data.nq, data.xq.get(), k, D.get(), I.get()); }); printHeader(\"FAISS IVFFlat Search Result (MU)\", config.deviceId); printTimings(search_ms, add_ms, sync_ms, train_ms); printTopK(I.get(), D.get(), data.nq, k); return 0; } catch (const faiss::FaissException&amp; e) { std::cerr &lt;&lt; \"Faiss error: \" &lt;&lt; e.what() &lt;&lt; std::endl; return 1; } catch (const std::exception&amp; e) { std::cerr &lt;&lt; \"Error: \" &lt;&lt; e.what() &lt;&lt; std::endl; return 1; } } . ",
+    "url": "/xvector-suite/xvector/xfaiss-tutorial.html#ivf-flat",
+    
+    "relUrl": "/xfaiss-tutorial.html#ivf-flat"
+  },"23": {
+    "doc": "Tutorial",
+    "title": "IVF-RaBitQ",
+    "content": "xfaiss_tutorial/2-MuIVFRaBitQ.cpp . The same three-step pattern applies. The key differences from IVF-Flat are the index class, a higher taskCount, and the qb (query bits) parameter: . |   | IVF-Flat | IVF-RaBitQ | . | Index class | MuIndexIvfFlat | MuIndexIvfRabitq | . | taskCount | 192 | 3072 | . | qb | N/A | Query quantization bits (e.g., 4) | . #include \"TutorialUtils.h\" #include &lt;cassert&gt; #include &lt;faiss/IndexFlat.h&gt; #include &lt;faiss/impl/FaissException.h&gt; #include &lt;faiss/mu/MuIndexIvfRabitq.h&gt; #include &lt;faiss/mu/MuResources.h&gt; int main() { try { size_t d = 128; size_t nb = 1000000; size_t nq = 100; size_t nlist = 100; size_t nprobe = 10; uint8_t query_bits = 4; size_t k = 5; auto data = prepareData(d, nb, nq); faiss::IndexFlatL2 quantizer(data.d); auto config = faiss::MuResourcesConfig::fromConfigManager(); config.taskCount = 3072; auto resources = faiss::makeMuResources(config); faiss::MuIndexIvfRabitq index(resources, &amp;quantizer, data.d, nlist); assert(!index.is_trained); double train_ms = measureMs([&amp;] { index.train(data.nb, data.xb.get()); }); assert(index.is_trained); double add_ms = measureMs([&amp;] { index.add(data.nb, data.xb.get()); }); double sync_ms = measureMs([&amp;] { index.syncToMuDevice(); }); index.nprobe = nprobe; index.qb = query_bits; auto I = std::make_unique&lt;idx_t[]&gt;(k * data.nq); auto D = std::make_unique&lt;float[]&gt;(k * data.nq); double search_ms = measureMs([&amp;] { index.search(data.nq, data.xq.get(), k, D.get(), I.get()); }); printHeader(\"FAISS IVFRaBitQ Search Result (MU)\", config.deviceId); printTimings(search_ms, add_ms, sync_ms, train_ms); printTopK(I.get(), D.get(), data.nq, k); return 0; } catch (const faiss::FaissException&amp; e) { std::cerr &lt;&lt; \"Faiss error: \" &lt;&lt; e.what() &lt;&lt; std::endl; return 1; } catch (const std::exception&amp; e) { std::cerr &lt;&lt; \"Error: \" &lt;&lt; e.what() &lt;&lt; std::endl; return 1; } } . ",
+    "url": "/xvector-suite/xvector/xfaiss-tutorial.html#ivf-rabitq",
+    
+    "relUrl": "/xfaiss-tutorial.html#ivf-rabitq"
+  },"24": {
+    "doc": "Tutorial",
+    "title": "Flat (KNN Exact)",
+    "content": "xfaiss_tutorial/3-MuFlat.cpp . Brute-force exact nearest neighbor search on the MU device. No training or quantizer is needed — just add vectors, sync, and search. #include \"TutorialUtils.h\" #include &lt;faiss/impl/FaissException.h&gt; #include &lt;faiss/mu/MuIndexFlat.h&gt; #include &lt;faiss/mu/MuResources.h&gt; int main() { try { size_t d = 128; size_t nb = 1000000; size_t nq = 100; size_t k = 5; auto data = prepareData(d, nb, nq); auto config = faiss::MuResourcesConfig::fromConfigManager(); config.taskCount = 192; auto resources = faiss::makeMuResources(config); faiss::MuIndexFlat index(resources, data.d); double add_ms = measureMs([&amp;] { index.add(data.nb, data.xb.get()); }); double sync_ms = measureMs([&amp;] { index.syncToMuDevice(); }); auto I = std::make_unique&lt;idx_t[]&gt;(k * data.nq); auto D = std::make_unique&lt;float[]&gt;(k * data.nq); double search_ms = measureMs([&amp;] { index.search(data.nq, data.xq.get(), k, D.get(), I.get()); }); printHeader(\"FAISS IndexFlat Search Result (MU)\", config.deviceId); printTimings(search_ms, add_ms, sync_ms); printTopK(I.get(), D.get(), data.nq, k); return 0; } catch (const faiss::FaissException&amp; e) { std::cerr &lt;&lt; \"Faiss error: \" &lt;&lt; e.what() &lt;&lt; std::endl; return 1; } catch (const std::exception&amp; e) { std::cerr &lt;&lt; \"Error: \" &lt;&lt; e.what() &lt;&lt; std::endl; return 1; } } . ",
+    "url": "/xvector-suite/xvector/xfaiss-tutorial.html#flat-knn-exact",
+    
+    "relUrl": "/xfaiss-tutorial.html#flat-knn-exact"
+  },"25": {
+    "doc": "Tutorial",
+    "title": "Next Steps",
+    "content": ". | Benchmark Reference — Preset and option reference for bench | . ",
+    "url": "/xvector-suite/xvector/xfaiss-tutorial.html#next-steps",
+    
+    "relUrl": "/xfaiss-tutorial.html#next-steps"
+  },"26": {
+    "doc": "XFaiss",
+    "title": "XFaiss",
+    "content": "Faiss is Meta’s open-source library for efficient similarity search and clustering of dense vectors, widely used for large-scale ANN (approximate nearest neighbor) search. XFaiss adds MU device acceleration on top of Faiss. Based on Faiss 1.13.0, it works as a drop-in replacement — accelerate search on MX1 with minimal code changes and existing .faiss index files. Internally, XFaiss uses libxvector-dev (the XVector API Reference) for device communication and kernel execution. ",
+    "url": "/xvector-suite/xvector/xfaiss.html",
+    
+    "relUrl": "/xfaiss.html"
+  },"27": {
+    "doc": "XFaiss",
+    "title": "Supported Index Types",
+    "content": "| Index | Base Class | Description | . | MuIndexIvfFlat | faiss::IndexIVFFlat | IVF-Flat with device-accelerated fine search | . | MuIndexIvfRabitq | faiss::IndexIVFRaBitQ | IVF-RaBitQ with device-accelerated fine search | . | MuIndexFlat | faiss::IndexFlat | Brute-force exact KNN with device-accelerated search | . ",
+    "url": "/xvector-suite/xvector/xfaiss.html#supported-index-types",
+    
+    "relUrl": "/xfaiss.html#supported-index-types"
+  },"28": {
+    "doc": "XFaiss",
+    "title": "How It Works",
+    "content": "Faiss supports GPU offloading — wrapping a CPU index with a GPU index class to accelerate search on NVIDIA GPUs. XFaiss applies the same pattern for MU (MX1): wrap a CPU index with an MU index class to offload the compute-intensive fine search to the MU device. | Faiss GPU | XFaiss MU | Role | . | GpuResources | MuResources | Device resource management | . | GpuIndexIVFFlat | MuIndexIvfFlat | IVF-Flat index with device acceleration | . | index_cpu_to_gpu() | Constructor + syncToMuDevice() | Transfer index data to device | . Setup . Before search, the application initializes MU resources and transfers index data to the device: . | makeMuResources() — connect to the MU device and load XVector kernels | Construct an MU index (e.g., MuIndexIvfFlat) from an existing Faiss CPU index | syncToMuDevice() — copy index data from CPU memory to device memory | . Future Work . In the future, indexes may be created directly in CXL memory, significantly reducing CPU-to-device copy overhead and making this step optional. Once setup is complete, the MU index is ready to handle search requests. Search . Each search executes in two phases: . | Coarse search (CPU) — the Faiss quantizer selects the top-nprobe candidate clusters | Fine search (MU device) — XVector kernels compute distances for all vectors within the selected clusters and return the top-k results | . ",
+    "url": "/xvector-suite/xvector/xfaiss.html#how-it-works",
+    
+    "relUrl": "/xfaiss.html#how-it-works"
+  },"29": {
+    "doc": "XFaiss",
+    "title": "Next Steps",
+    "content": ". | Quick Start — build, prepare data, and run benchmarks | . ",
+    "url": "/xvector-suite/xvector/xfaiss.html#next-steps",
+    
+    "relUrl": "/xfaiss.html#next-steps"
+  }
+}

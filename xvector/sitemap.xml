@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd" xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url>
+<loc>/xvector-suite/xvector/changelog.html</loc>
+</url>
+<url>
+<loc>/xvector-suite/xvector/examples.html</loc>
+</url>
+<url>
+<loc>/xvector-suite/xvector/getting-started.html</loc>
+</url>
+<url>
+<loc>/xvector-suite/xvector/</loc>
+</url>
+<url>
+<loc>/xvector-suite/xvector/xfaiss-benchmark-reference.html</loc>
+</url>
+<url>
+<loc>/xvector-suite/xvector/xfaiss-quick-start.html</loc>
+</url>
+<url>
+<loc>/xvector-suite/xvector/xfaiss-tutorial.html</loc>
+</url>
+<url>
+<loc>/xvector-suite/xvector/xfaiss.html</loc>
+</url>
+</urlset>

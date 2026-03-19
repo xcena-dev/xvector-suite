@@ -1,0 +1,86 @@
+{"0": {
+    "doc": "Examples",
+    "title": "Examples",
+    "content": "Code examples demonstrating XArith library usage in device kernels. ",
+    "url": "/xvector-suite/xarith/examples.html",
+    
+    "relUrl": "/examples.html"
+  },"1": {
+    "doc": "Examples",
+    "title": "Quick Start",
+    "content": "The examples below omit buffer allocation error checking for brevity. See Buffer Allocation for production-safe patterns. L2 Distance . #include &lt;xarith/xarith.hpp&gt; void computeExampleL2Distance(const float* vec1, const float* vec2, float* result, uint64_t dimension) { mu::vdma::VpeContext ctx(dimension); uint64_t buf1 = ctx.allocateBuffer(); uint64_t buf2 = ctx.allocateBuffer(); uint64_t diffBuf = ctx.allocateBuffer(); ctx.load(vec1, buf1); ctx.load(vec2, buf2); ctx.sub(buf2, buf1, diffBuf); *result = ctx.dot(diffBuf, diffBuf); // L2^2 = (vec2 - vec1) · (vec2 - vec1) } MU_KERNEL_ADD(computeExampleL2Distance); . Inner Product . void computeExampleInnerProduct(const float* vec1, const float* vec2, float* result, uint64_t dimension) { mu::vdma::VpeContext ctx(dimension, mu::vdma::VpeIdStrategy::ByClusterId); uint64_t buf1 = ctx.allocateBuffer(); uint64_t buf2 = ctx.allocateBuffer(); ctx.load(vec1, buf1); ctx.load(vec2, buf2); *result = ctx.dot(buf1, buf2); } MU_KERNEL_ADD(computeExampleInnerProduct); . Vector Addition . void computeExampleVectorAdd(const float* vec1, const float* vec2, float* result, uint64_t dimension) { mu::vdma::VpeContext ctx(dimension); uint64_t buf1 = ctx.allocateBuffer(); uint64_t buf2 = ctx.allocateBuffer(); uint64_t bufResult = ctx.allocateBuffer(); ctx.load(vec1, buf1); ctx.load(vec2, buf2); ctx.add(buf1, buf2, bufResult); // bufResult = buf1 + buf2 ctx.store(bufResult, result); // Write back to DRAM } MU_KERNEL_ADD(computeExampleVectorAdd); . ",
+    "url": "/xvector-suite/xarith/examples.html#quick-start",
+    
+    "relUrl": "/examples.html#quick-start"
+  },"2": {
+    "doc": "Examples",
+    "title": "CMake Integration",
+    "content": "cmake_minimum_required(VERSION 3.11) # Set MU toolchain paths from environment variables (set by SDK installer) set(MU_LIB_PATH \"$ENV{MU_LIB_PATH}\") set(MU_LLVM_PATH \"$ENV{MU_LLVM_PATH}\") set(CMAKE_C_COMPILER ${MU_LLVM_PATH}/bin/clang) set(CMAKE_CXX_COMPILER ${MU_LLVM_PATH}/bin/clang) project(my_device_kernel LANGUAGES CXX) # Find xarith package (installed at /opt/xarith/) find_package(xarith REQUIRED) # Create device kernel executable add_executable(my_kernel.mubin my_kernel.cpp) # Link xarith library target_link_libraries(my_kernel.mubin PRIVATE xarith) # Include directories target_include_directories(my_kernel.mubin PRIVATE ${MU_LLVM_PATH}/picolibc-rv/include ${MU_LLVM_PATH}/libcxx-rv/include/c++/v1 ${MU_LIB_PATH}/include ) # Set MU-specific compile flags target_compile_options(my_kernel.mubin PRIVATE -target riscv64-unknown-elf -march=rv64gcv_zvl256b_zve64x_zve64f_zve64d -mabi=lp64d -O2 -fno-exceptions -fno-rtti ) . ",
+    "url": "/xvector-suite/xarith/examples.html#cmake-integration",
+    
+    "relUrl": "/examples.html#cmake-integration"
+  },"3": {
+    "doc": "Examples",
+    "title": "Example Project",
+    "content": "The xarith-examples package includes complete Host + Device examples: . | basic – L2 distance, inner product, vector add/sub with test runner | vpe – VPE operation testing with performance measurement | knn – VPE-accelerated KNN with L2 and dot product distance | . Extract and build: . tar -xzf xarith-examples-&lt;version&gt;.tar.gz cd xarith-examples-&lt;version&gt; mkdir build &amp;&amp; cd build cmake -DCMAKE_PREFIX_PATH=/opt/xarith .. make . basic . Runs four vector operation tests (L2 distance, inner product, vector add, vector sub) on the MU device./basic/compute_example_host . Expected output: . XArith Basic Example L2 Distance Test [Host] Executing kernel... [Host] Expected: 128 Actual: 128 [Host] Test PASSED Inner Product Test [Host] Executing kernel... [Host] Expected: 256 Actual: 256 [Host] Test PASSED Vector Add Test [Host] Executing kernel... [Host] Test PASSED Vector Sub Test [Host] Executing kernel... [Host] Test PASSED 4/4 tests passed . vpe . Tests VPE operations (dot, L2, add, sub) across different configurations and measures throughput (GFLOPS) — includes numSub sweep, taskCount sweep, dimension sweep, iteration sweep, and task ratio sweeps./vpe/compute_vpe . Environment Variables: . | Variable | Default | Description | . | DEVICEID | 0 | Device ID | . Sample output (abbreviated): . XArith VPE Example ... Dot Product - Task Ratio x Dimension Matrix Op | numSub | taskCount | Dim | Iter/Task | Total Iters | Time(us) | GFLOPS | Status ------+--------+-----------+--------+------------+-------------+------------+------------+-------- dot | 24 | 48 | 128 | 2000000 | 96000000 | ... | ... | PASS dot | 24 | 96 | 128 | 2000000 | 192000000 | ... | ... | PASS dot | 24 | 192 | 128 | 2000000 | 384000000 | ... | ... | PASS dot | 24 | 384 | 128 | 2000000 | 768000000 | ... | ... | PASS ... dot | 24 | 48 | 1024 | 2000000 | 96000000 | ... | ... | PASS dot | 24 | 96 | 1024 | 2000000 | 192000000 | ... | ... | PASS dot | 24 | 192 | 1024 | 2000000 | 384000000 | ... | ... | PASS dot | 24 | 384 | 1024 | 2000000 | 768000000 | ... | ... | PASS 16/16 passed ... All benchmarks completed. The example runs multiple test suites including numSub sweeps, taskCount sweeps, dimension sweeps (64–8192), iteration sweeps, task ratio sweeps for all four operations, and a cross-product dimension × task ratio matrix. knn . VPE-accelerated KNN search with L2 and dot product distance./knn/knn_vpe_host # run with defaults ./knn/knn_vpe_host --help # see all options . Options: . | Option | Default | Description | . | --dim N | 128 | Vector dimension | . | --vectors N | 960000 | Number of data points | . | --k N | 5 | Number of nearest neighbors | . Environment Variables: . | Variable | Default | Description | . | DEVICEID | 0 | Device ID | . | NUMSUB | 24 | Number of subsystems | . | TASKCOUNT | 48 | Number of subtasks for data partitioning | . Sample output: . XArith KNN Example Config: dim=128 points=960000 k=5 tasks=48 subs=24 (20000 points/task) KNN VPE L2 Distance Test [VPE] Warmup (1 run): ... [VPE] Elapsed (5 runs): ... [VPE] min=... median=... max=... [Result] Top-5: [0] label=... dist=... [1] label=... dist=..... [Verify] PASSED KNN VPE Dot Product Test [VPE] Warmup (1 run): ... [VPE] Elapsed (5 runs): ... [VPE] min=... median=... max=... [Result] Top-5: [0] label=... dist=... [1] label=... dist=..... [Verify] PASSED 2/2 tests passed . ",
+    "url": "/xvector-suite/xarith/examples.html#example-project",
+    
+    "relUrl": "/examples.html#example-project"
+  },"4": {
+    "doc": "Examples",
+    "title": "Tips",
+    "content": "Buffer Allocation . Always check allocation results before using buffers: . uint64_t buf = ctx.allocateBuffer(); if (buf == mu::vdma::VpeContext::INVALID_BUFFER) { return; // allocation failed } . VpeContext supports up to 32 buffer slots, where each slot holds one FP32 vector of the configured dimension. Query availability with getAvailableBufferCount() before bulk allocation. For production kernels, use an all-or-nothing retry loop to prevent deadlock when multiple buffers are needed: . uint64_t buf1, buf2; while (true) { buf1 = ctx.allocateBuffer(); if (buf1 == mu::vdma::VpeContext::INVALID_BUFFER) continue; buf2 = ctx.allocateBuffer(); if (buf2 == mu::vdma::VpeContext::INVALID_BUFFER) { ctx.freeBuffer(buf1); continue; } break; } . Performance . | Minimize DRAM transfers – Keep data in SRAM buffers as long as possible; batch operations before storing results back | Choose VpeIdStrategy – Use ByThreadId for parallelism within an MU, ByClusterId for parallelism across clusters | . ",
+    "url": "/xvector-suite/xarith/examples.html#tips",
+    
+    "relUrl": "/examples.html#tips"
+  },"5": {
+    "doc": "Getting Started",
+    "title": "Getting Started",
+    "content": "This guide walks you through installing XArith and setting up your development environment. ",
+    "url": "/xvector-suite/xarith/getting-started.html",
+    
+    "relUrl": "/getting-started.html"
+  },"6": {
+    "doc": "Getting Started",
+    "title": "Prerequisites",
+    "content": ". | Ubuntu 24.04 | XCENA SDK installed (provides MU library and MU LLVM toolchain) | CMake 3.11 or higher | . ",
+    "url": "/xvector-suite/xarith/getting-started.html#prerequisites",
+    
+    "relUrl": "/getting-started.html#prerequisites"
+  },"7": {
+    "doc": "Getting Started",
+    "title": "Installation",
+    "content": "Debian Package . sudo dpkg -i libxarith-dev_0.1.1_amd64.deb . libxarith-dev installs: . | Path | Contents | . | /opt/xarith/include/xarith/ | XArith C++ headers | . | /opt/xarith/lib/ | libxarith.a static library and CMake config | . ",
+    "url": "/xvector-suite/xarith/getting-started.html#installation",
+    
+    "relUrl": "/getting-started.html#installation"
+  },"8": {
+    "doc": "Getting Started",
+    "title": "Next Steps",
+    "content": ". | Examples – Code examples and CMake integration | XArith API – Complete API documentation | . ",
+    "url": "/xvector-suite/xarith/getting-started.html#next-steps",
+    
+    "relUrl": "/getting-started.html#next-steps"
+  },"9": {
+    "doc": "Home",
+    "title": "Overview",
+    "content": "XArith is a device-side C++ library designed for XCENA’s Computational Memory (MX1). It provides high-performance vector computation primitives for VPE (Vector Processing Engine). Used together with the MU library (mu/mu.hpp), XArith enables developers to build high-performance MU kernels that run on the MX1’s vector processing hardware. Note: XArith is planned to be integrated into the MU library (mu_lib) in a future release. ",
+    "url": "/xvector-suite/xarith/#overview",
+    
+    "relUrl": "/#overview"
+  },"10": {
+    "doc": "Home",
+    "title": "Key Features",
+    "content": ". | VPE vector operations – Dot product, add, sub, mul, div, square, reduce, comparison, and bitwise operations | Thread-safe – Safe for concurrent access; each thread should use its own VpeContext for best performance | . See Getting Started to install XArith and set up your development environment. ",
+    "url": "/xvector-suite/xarith/#key-features",
+    
+    "relUrl": "/#key-features"
+  },"11": {
+    "doc": "Home",
+    "title": "Home",
+    "content": " ",
+    "url": "/xvector-suite/xarith/",
+    
+    "relUrl": "/"
+  }
+}
