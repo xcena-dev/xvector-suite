@@ -7,12 +7,6 @@ Packaging and release management for xvector-dev and xfaiss.
 | `xvector-dev` | Vector search library (libxvector-dev, libxarith-dev) |
 | `xfaiss` | XCENA-modified FAISS fork |
 
-## Setup
-
-```bash
-git clone --recursive <repo-url>
-```
-
 ## Usage
 
 ```bash
@@ -22,30 +16,15 @@ git clone --recursive <repo-url>
 | Command | Description |
 |---------|-------------|
 | `status` | Show repo state, versions, and build artifacts |
-| `show [target]` | Show version(s) and git hashes |
-| `sync` | Fetch latest submodule commits and update references |
-| `build [target]` | Build artifacts into `dist/build/` |
-| `bump <target> <type>` | Bump version (`major`, `minor`, `patch`) |
-| `tag [target]` | Create git tags, manifest, and GitHub Release |
-| `publish` | Deploy documentation to gh-pages |
-| `clean` | Remove `dist/build/` |
+| `sync` | Fetch latest submodule commits and commit references |
+| `build [target]` | Build artifacts + dist tarball into `dist/build/` |
+| `release prepare [target]` | Verify artifacts, create manifest, commit & tag (local) |
+| `release publish [tag]` | Push tag + create GitHub Release (remote) |
+| `docs build [tag]` | Build documentation with release-specific download paths |
+| `docs preview` | Preview built documentation locally (localhost:8000) |
+| `docs publish` | Deploy documentation to gh-pages |
 
 **Targets:** `xvector`, `xarith`, `xfaiss`, `all` (default)
-
-## Examples
-
-```bash
-./package.sh status
-./package.sh show xvector
-./package.sh sync
-./package.sh build
-./package.sh build xfaiss
-./package.sh bump xvector patch    # 0.1.0 -> 0.1.1
-./package.sh bump xfaiss minor     # 0.1.0 -> 0.2.0
-./package.sh tag all
-./package.sh publish
-./package.sh clean
-```
 
 ## Version Management
 
@@ -59,14 +38,22 @@ Each package follows semver (`MAJOR.MINOR.PATCH`) via VERSION files in submodule
 
 ## Release Workflow
 
-`tag` validates artifacts, creates per-component git tags, commits a manifest to `manifests/`, and publishes a GitHub Release.
+```bash
+./package.sh sync                           # Update submodules to latest remote
+./package.sh build                          # Build all artifacts locally
+# ... verify artifacts locally ...
+./package.sh release prepare                # Create manifest + tag (local)
+./package.sh release publish                # Push tag + GitHub Release
+./package.sh docs build                     # Build docs (auto-detect latest tag)
+./package.sh docs preview                   # Preview docs locally
+./package.sh docs publish                   # Deploy docs to gh-pages
+```
 
-| Scope | Tag Format | Repository |
-|-------|-----------|------------|
-| xvector | `xvector-v{version}` | xvector-dev |
-| xarith | `xarith-v{version}` | xvector-dev |
-| xfaiss | `xfaiss-v{version}` | xfaiss |
-| suite | `release-{epoch}` | xvector-suite |
+`release prepare` validates artifacts, creates a release directory in `dist/`, writes a manifest, commits the manifest to `manifests/`, and creates a `release-{epoch}` tag locally.
+
+`release publish` pushes the tag and creates a GitHub Release with the dist tarball and manifest.
+
+Tags are created in xvector-suite with the format `release-{epoch}` (e.g., `release-1709512345`).
 
 ## Dependencies
 
